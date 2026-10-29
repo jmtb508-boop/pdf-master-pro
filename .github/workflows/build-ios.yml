@@ -1,0 +1,71 @@
+name: Build iOS App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build iOS Package (IPA & Archive)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install NPM Dependencies
+        run: npm install
+
+      - name: Sync Capacitor iOS Project
+        run: npx cap sync ios
+
+      - name: Select Xcode Version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Build and Archive iOS App (Unsigned)
+        run: |
+          mkdir -p build
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/App.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package App into IPA (Payload format)
+        run: |
+          mkdir -p build/Payload
+          cp -r "build/App.xcarchive/Products/Applications/App.app" build/Payload/
+          cd build
+          zip -qr PDF_Pro_iOS.ipa Payload
+          cd ..
+          ls -lh build/PDF_Pro_iOS.ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF_Pro_iOS_Package
+          path: build/PDF_Pro_iOS.ipa
+          retention-days: 30
+
+      - name: Upload xcarchive Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF_Pro_iOS_Archive
+          path: build/App.xcarchive
+          retention-days: 14

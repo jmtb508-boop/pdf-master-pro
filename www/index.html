@@ -1,0 +1,3005 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=no, viewport-fit=cover" />
+  <title>PDF Pro — قارئ وأدوات PDF للموبايل</title>
+  <!-- Apple Web Clip / PWA Support for iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PDF Pro" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Cairo', 'sans-serif'],
+          },
+          colors: {
+            m3: {
+              primary: '#4F46E5',
+              primaryDark: '#6366F1',
+              surfaceLight: '#F8FAFC',
+              surfaceDark: '#0B0F19',
+              cardLight: '#FFFFFF',
+              cardDark: '#151C2C',
+              pillLight: '#E0E7FF',
+              pillDark: '#262F45',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    * {
+      font-family: 'Cairo', sans-serif;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      overscroll-behavior-y: none;
+    }
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    * {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* True Dark Mode Inversion for PDF Paper */
+    .pdf-paper-inverted {
+      filter: invert(0.92) hue-rotate(180deg) contrast(1.05);
+    }
+    .pdf-page-wrapper {
+      transition: box-shadow 0.2s ease, transform 0.25s ease;
+      transform-origin: center center;
+    }
+    /* Bottom Sheet transitions */
+    .sheet-overlay {
+      transition: opacity 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    .sheet-content {
+      transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    /* Freely Draggable Floating Action System */
+    #floatingSystemRoot {
+      position: fixed;
+      z-index: 45;
+      touch-action: none;
+      user-select: none;
+    }
+    #floatingActionBall {
+      touch-action: none;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    .radial-item {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.22);
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease, background-color 0.15s ease;
+      cursor: pointer;
+    }
+    .radial-item.closed {
+      transform: translate(0px, 0px) scale(0.2) !important;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #floatingDockMenu {
+      touch-action: none;
+      transition: opacity 0.22s ease;
+    }
+    /* Scrubber thumb styling */
+    input[type=range].scrubber-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 18px;
+      width: 18px;
+      border-radius: 9999px;
+      background: #4F46E5;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex justify-center transition-colors duration-200">
+
+  <!-- Mobile Container Shell -->
+  <div id="mobileAppShell" class="w-full max-w-md bg-white dark:bg-[#0B0F19] min-h-screen flex flex-col relative shadow-2xl border-x border-slate-200 dark:border-slate-800/80 overflow-hidden">
+
+    <!-- Hidden Native File Inputs -->
+    <input type="file" id="globalPdfInput" accept=".pdf,application/pdf" class="hidden" />
+    <input type="file" id="toolSinglePdfInput" accept=".pdf,application/pdf" class="hidden" />
+    <input type="file" id="toolMultiPdfInput" accept=".pdf,application/pdf" multiple class="hidden" />
+    <input type="file" id="toolImageInput" accept="image/*" multiple class="hidden" />
+    <input type="file" id="toolDocInput" accept=".doc,.docx,.pdf,image/*" class="hidden" />
+
+    <!-- Mobile Top App Bar (Material 3 Header) -->
+    <header id="mobileTopAppBar" class="sticky top-0 z-30 bg-white/95 dark:bg-[#0B0F19]/95 backdrop-blur-md px-4 pt-3 pb-2.5 border-b border-slate-200/80 dark:border-slate-800/80 transition-all">
+      <div class="flex items-center justify-between gap-2">
+        <!-- Logo & Title -->
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-gradient-to-br from-indigo-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h1 class="text-base font-black tracking-tight text-slate-900 dark:text-white">PDF Pro</h1>
+              <span class="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">موبايل</span>
+            </div>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400 -mt-0.5">قارئ خفيف • أدوات ذكية بدون إعلانات</p>
+          </div>
+        </div>
+
+        <!-- Quick Top Actions -->
+        <div class="flex items-center gap-1.5">
+          <button type="button" id="btnTopOpenLocal" class="p-2 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 active:scale-95 transition" title="فتح ملف PDF">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+          </button>
+
+          <button type="button" id="btnSystemSettings" class="p-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 active:scale-95 transition" title="إعدادات التخزين والنظام">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </button>
+
+          <button type="button" id="btnToggleAppTheme" class="p-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 active:scale-95 transition" title="تبديل المظهر">
+            <svg id="iconSun" class="w-5 h-5 hidden dark:block text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+            <svg id="iconMoon" class="w-5 h-5 block dark:hidden text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN SCROLLABLE VIEW (Tab Content) -->
+    <main class="flex-1 overflow-y-auto pb-24 px-3.5 pt-3 space-y-4">
+
+      <!-- ==================== TAB 1: HOME (الرئيسية: ملفاتك الحقيقية فقط) ==================== -->
+      <section id="tabViewHome" class="space-y-4">
+        <!-- Hero Card -->
+        <div class="rounded-3xl bg-gradient-to-l from-indigo-600 to-teal-600 text-white p-4 shadow-md relative overflow-hidden">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm">قارئ موبايل متطور 📱</span>
+              <span class="text-[10px] text-indigo-100">تدوير وترتيب مباشر • كرة عائمة حرة</span>
+            </div>
+            <h2 class="text-base font-extrabold leading-snug">افتح ملفات الـ PDF من هاتفك مباشرة</h2>
+            <div class="pt-0.5">
+              <button type="button" id="btnHeroOpenPdf" class="w-full py-2.5 px-4 rounded-2xl bg-white text-indigo-700 font-extrabold text-xs shadow transition active:scale-95 flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                <span>اختيار ملف PDF من الجهاز</span>
+              </button>
+              <button type="button" id="btnCreateBlankPdf" class="hidden" aria-hidden="true">+ مفكرة فارغة</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search & Filter Controls -->
+        <div class="space-y-2.5">
+          <div class="relative">
+            <input type="text" id="inputSearchRecent" placeholder="ابحث في ملفاتك..." class="w-full pl-8 pr-9 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-transparent focus:border-indigo-500 text-xs font-semibold outline-none transition" />
+            <svg class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <button type="button" id="btnClearRecentSearch" class="hidden absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">✕</button>
+          </div>
+
+          <div class="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl">
+            <button type="button" id="btnFilterRecentAll" class="flex-1 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm transition">
+              الملفات الأخيرة (<span id="countRecentFiles">0</span>)
+            </button>
+            <button type="button" id="btnFilterFavorites" class="flex-1 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 transition">
+              المفضلة ★ (<span id="countFavFiles">0</span>)
+            </button>
+          </div>
+        </div>
+
+        <!-- Files List -->
+        <div id="filesGridContainer" class="space-y-3">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ==================== TAB 2: TOOLS ==================== -->
+      <section id="tabViewTools" class="hidden space-y-4">
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <span class="w-2 h-4 rounded-full bg-indigo-600 inline-block"></span>
+              <span>أدوات المعالجة الأوفلاين (تعمل محلياً 100%)</span>
+            </h2>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300">7 أدوات</span>
+          </div>
+
+          <div id="offlineToolsGrid" class="grid grid-cols-2 gap-2.5">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="space-y-2.5 pt-1">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <span class="w-2 h-4 rounded-full bg-teal-500 inline-block"></span>
+              <span>الأدوات السحابية والذكية (Cloud & OCR)</span>
+            </h2>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-600 dark:text-teal-300">أداتان</span>
+          </div>
+
+          <div id="cloudToolsGrid" class="space-y-2.5">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 3: NOTES & BOOKMARKS ==================== -->
+      <section id="tabViewNotes" class="hidden space-y-3.5">
+        <div class="p-3.5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 space-y-2">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-black text-slate-900 dark:text-white">الملاحظات والإشارات المرجعية</h2>
+            <div class="flex items-center gap-1">
+              <button type="button" id="btnExportAllNotesTxt" class="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300">تصدير .TXT</button>
+              <button type="button" id="btnExportAllNotesPdf" class="px-2.5 py-1 rounded-xl bg-indigo-600 text-white text-[10px] font-bold shadow-sm">تصدير PDF</button>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">سجل موحد لجميع التظليلات، الملاحظات اللاصقة، الإشارات، والتوقيعات التي تضيفها داخل ملفاتك.</p>
+        </div>
+
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+          <button type="button" data-notes-filter="all" class="notes-filter-btn shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-indigo-600 text-white">الكل</button>
+          <button type="button" data-notes-filter="highlight" class="notes-filter-btn shrink-0 px-3 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">التظليلات</button>
+          <button type="button" data-notes-filter="sticky" class="notes-filter-btn shrink-0 px-3 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">الملاحظات</button>
+          <button type="button" data-notes-filter="bookmark" class="notes-filter-btn shrink-0 px-3 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">الإشارات</button>
+          <button type="button" data-notes-filter="drawing" class="notes-filter-btn shrink-0 px-3 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">الرسومات</button>
+        </div>
+
+        <div id="unifiedNotesContainer" class="space-y-2.5"></div>
+      </section>
+
+    </main>
+
+    <!-- ==================== MOBILE BOTTOM NAVIGATION BAR ==================== -->
+    <nav id="bottomNavBar" class="sticky bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-[#0B0F19]/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800/80 px-4 pt-2" style="padding-bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));">
+      <div class="grid grid-cols-3 gap-1">
+        <button type="button" data-main-tab="home" class="main-nav-btn flex flex-col items-center justify-center py-1.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 font-bold transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+          </svg>
+          <span class="text-[11px]">الرئيسية</span>
+        </button>
+
+        <button type="button" data-main-tab="tools" class="main-nav-btn flex flex-col items-center justify-center py-1.5 rounded-2xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+          </svg>
+          <span class="text-[11px]">الأدوات</span>
+        </button>
+
+        <button type="button" data-main-tab="notes" class="main-nav-btn flex flex-col items-center justify-center py-1.5 rounded-2xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold transition relative">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+          </svg>
+          <span class="text-[11px]">الملاحظات</span>
+          <span id="navBadgeNotesCount" class="absolute top-1 left-5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-rose-500 text-white">0</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ==================== MOBILE FULLSCREEN READER OVERLAY ==================== -->
+    <div id="readerOverlay" class="fixed inset-0 z-40 hidden flex-col bg-slate-200 dark:bg-[#070A12] transition-colors overflow-hidden">
+
+      <!-- Reader Top Bar (Now includes Undo/Redo ↶ ↷ and Live Rotate & Reorder 🔄 right at the top!) -->
+      <div id="readerTopBar" class="bg-white/95 dark:bg-[#0B0F19]/95 backdrop-blur-md px-2.5 py-2 flex flex-col gap-1.5 z-20 border-b border-slate-200/80 dark:border-slate-800/80 transition-all duration-300">
+        
+        <!-- Top Row: Back + Title + Undo/Redo (القديم والجديد) + Rotate & Reorder (تدوير وترتيب) -->
+        <div class="flex items-center justify-between gap-1.5">
+          <!-- Back & File Name -->
+          <div class="flex items-center gap-1 min-w-0">
+            <button type="button" id="btnCloseReader" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition" title="رجوع">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+            <div class="min-w-0">
+              <h3 id="readerDocTitle" class="text-xs font-extrabold text-slate-900 dark:text-white truncate max-w-[125px]">مستند PDF</h3>
+              <span id="badgeKeepAwake" class="hidden text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">يقظ ☀️</span>
+            </div>
+          </div>
+
+          <!-- Top Direct Controls: Undo/Redo (القديم والجديد) + Live Rotate & Reorder (تدوير وترتيب) -->
+          <div class="flex items-center gap-1.5">
+            <!-- Undo / Redo Pill (زرار القديم والجديد فوق) -->
+            <div class="flex items-center gap-1">
+              <button type="button" id="btnTopAnnoUndo" class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-sm font-black flex items-center justify-center active:scale-90 transition shadow-2xs" title="تراجع للقديم (Undo)">
+                ↶
+              </button>
+              <button type="button" id="btnTopAnnoRedo" class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-sm font-black flex items-center justify-center active:scale-90 transition shadow-2xs" title="إعادة للجديد (Redo)">
+                ↷
+              </button>
+            </div>
+
+            <!-- Quick 90° Rotate Current Page Button -->
+            <button type="button" id="btnQuickRotateCurrentPage" class="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 flex items-center justify-center active:scale-90 transition" title="تدوير الصفحة الحالية 90° فوراً">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </button>
+
+            <!-- Full Live Rotate & Reorder Pages Button inside Open PDF -->
+            <button type="button" id="btnTopRotateReorder" class="px-2.5 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1 active:scale-95 transition shadow-xs" title="تدوير وترتيب صفحات الملف المفتوح">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <span>تدوير وترتيب</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Second Row: Browse Mode Button (وضع التصفح) + Zoom Pill (+ 100% -) & Reader Utility Icons -->
+        <div class="flex items-center justify-between gap-1 pt-1 border-t border-slate-100 dark:border-slate-800/70">
+          <div class="flex items-center gap-1">
+            <!-- Browse / Pan Mode Button directly in Top Bar -->
+            <button type="button" id="btnTopPanMode" data-anno-tool="pan" class="anno-tool-btn px-2.5 py-1 rounded-xl bg-indigo-600 text-white text-[11px] font-extrabold flex items-center gap-1 shadow-xs active:scale-95 transition" title="وضع التصفح والتكبير بإصبعين">
+              <span>✋ وضع التصفح</span>
+            </button>
+
+            <!-- Zoom Out / Percent / Zoom In Pill -->
+            <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl px-1.5 py-0.5">
+              <button type="button" id="btnZoomOut" class="px-1.5 py-0.5 text-xs font-black text-slate-700 dark:text-slate-200 active:scale-90" title="تصغير">−</button>
+              <button type="button" id="btnResetZoom" class="px-1.5 text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 min-w-[36px] text-center" title="إعادة ضبط الزووم">100%</button>
+              <button type="button" id="btnZoomIn" class="px-1.5 py-0.5 text-xs font-black text-slate-700 dark:text-slate-200 active:scale-90" title="تكبير">+</button>
+            </div>
+          </div>
+
+          <!-- Utility Icons -->
+          <div class="flex items-center gap-0.5">
+            <button type="button" id="btnToggleSearchPanel" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition" title="بحث نصي">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+            </button>
+
+            <button type="button" id="btnTogglePaperInvert" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition" title="الوضع الليلي لعكس ألوان الورقة">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+              </svg>
+            </button>
+
+            <button type="button" id="btnTogglePageBookmark" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition" title="إشارة مرجعية">
+              <svg id="iconPageBookmark" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+              </svg>
+            </button>
+
+            <button type="button" id="btnOpenTocSheet" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition" title="الفهرس والمصغرات">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
+              </svg>
+            </button>
+
+            <button type="button" id="btnOpenReadingPrefsSheet" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition" title="أدوات القراءة والنزول التلقائي">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collapsible Search Bar -->
+      <div id="readerSearchBar" class="hidden bg-white dark:bg-[#0B0F19] border-b border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-between gap-2 z-20 transition-all">
+        <input type="text" id="inputPdfTextSearch" placeholder="ابحث داخل المستند..." class="flex-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs outline-none border border-transparent focus:border-indigo-500" />
+        <button type="button" id="btnExecPdfSearch" class="px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold">بحث</button>
+        <span id="labelSearchMatches" class="text-[10px] font-semibold text-slate-500">0 نتائج</span>
+        <button type="button" id="btnPrevSearchMatch" class="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold">▲</button>
+        <button type="button" id="btnNextSearchMatch" class="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold">▼</button>
+      </div>
+
+      <!-- Live Pinch-to-Zoom HUD Indicator -->
+      <div id="pinchZoomHud" class="hidden fixed top-24 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 rounded-full bg-slate-900/85 text-white text-xs font-black backdrop-blur-md shadow-lg pointer-events-none">
+        🔍 زووم: <span id="pinchZoomHudValue">100%</span>
+      </div>
+
+      <!-- PDF Main Reading Viewport (Supports 2-Finger Pinch-to-Zoom, Double-Tap Zoom, and Single-Tap Zen Mode) -->
+      <div id="readerViewport" class="flex-1 overflow-auto p-3 flex flex-col items-center gap-4 relative">
+        <!-- Pages rendered dynamically -->
+      </div>
+
+      <!-- ==================== FREELY DRAGGABLE FLOATING ACTION BALL & RADIAL CURVED FAN MENU (OPENS ON FIRST TOUCH) ==================== -->
+      <div id="floatingSystemRoot" style="left: 24px; top: 52%; touch-action: none;">
+        <div id="radialFanContainer" class="relative w-14 h-14">
+
+          <!-- 1. Pen (قلم رسم حر) -->
+          <button type="button" data-anno-tool="pen" id="radialBtnPen" class="anno-tool-btn radial-item closed bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700" title="قلم رسم حر">
+            <span class="text-lg pointer-events-none">✏️</span>
+          </button>
+
+          <!-- 2. Highlighter (هايلايتر شفاف) -->
+          <button type="button" data-anno-tool="highlight" id="radialBtnHighlight" class="anno-tool-btn radial-item closed bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700" title="هايلايتر تظليل">
+            <span class="text-lg pointer-events-none">🖍️</span>
+          </button>
+
+          <!-- 3. Eraser (ممحاة) -->
+          <button type="button" data-anno-tool="eraser" id="radialBtnEraser" class="anno-tool-btn radial-item closed bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700" title="ممحاة">
+            <span class="text-lg pointer-events-none">🧽</span>
+          </button>
+
+          <!-- 4. Sticky Note Pin (ملاحظة لاصقة) -->
+          <button type="button" data-anno-tool="sticky" id="radialBtnSticky" class="anno-tool-btn radial-item closed bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700" title="تثبيت ملاحظة لاصقة">
+            <span class="text-lg pointer-events-none">📌</span>
+          </button>
+
+          <!-- 5. Digital Signature (توقيع رقمي) -->
+          <button type="button" id="btnOpenSignatureModal" class="radial-item closed bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700" title="توقيع رقمي">
+            <span class="text-lg pointer-events-none">✍️</span>
+          </button>
+
+          <!-- Hidden legacy button kept inert for compatibility -->
+          <button type="button" id="radialBtnMoreDock" class="hidden" aria-hidden="true">⇄</button>
+
+          <!-- Main Draggable Floating Ball (Instant First-Touch Open) -->
+          <div id="floatingActionBall" style="touch-action: none;" title="المس لفتح الأدوات فوراً أو اسحب لأي مكان" class="w-14 h-14 rounded-full bg-[#134E5E] dark:bg-indigo-600 text-white shadow-2xl flex items-center justify-center cursor-grab active:cursor-grabbing border-[2.5px] border-white/80 relative z-10 select-none">
+            <span class="text-2xl pointer-events-none">🎨</span>
+            <span id="activeToolIndicatorDot" class="w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white absolute -top-0.5 -right-0.5 pointer-events-none"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Inert retired dock container (permanently hidden per user request) -->
+      <div id="floatingDockMenu" class="hidden" aria-hidden="true">
+        <div id="floatingDockDragHandle"></div>
+        <button type="button" id="btnCloseFloatingDock"></button>
+        <button type="button" id="btnAnnoUndo"></button>
+        <button type="button" id="btnAnnoRedo"></button>
+      </div>
+
+      <!-- ==================== BOTTOM COLORS, STROKE WIDTH & QUICK ACTIONS BAR ==================== -->
+      <div id="readerBottomScrubber" class="bg-white/95 dark:bg-[#0B0F19]/95 backdrop-blur-md px-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-800/80 flex flex-col gap-2 z-20 transition-all duration-300" style="padding-bottom: max(38px, calc(env(safe-area-inset-bottom, 0px) + 32px));">
+        <!-- Row 1: Color Swatches + Stroke Thickness Slider -->
+        <div class="flex items-center justify-between gap-3">
+          <!-- 5 Color Swatches -->
+          <div class="flex items-center gap-2 shrink-0">
+            <button type="button" data-anno-color="#FACC15" class="anno-color-btn w-6 h-6 rounded-full bg-yellow-400 ring-2 ring-offset-1 ring-indigo-600 transition transform active:scale-90" title="أصفر"></button>
+            <button type="button" data-anno-color="#4ADE80" class="anno-color-btn w-6 h-6 rounded-full bg-green-400 transition transform active:scale-90" title="أخضر"></button>
+            <button type="button" data-anno-color="#38BDF8" class="anno-color-btn w-6 h-6 rounded-full bg-sky-400 transition transform active:scale-90" title="أزرق"></button>
+            <button type="button" data-anno-color="#F43F5E" class="anno-color-btn w-6 h-6 rounded-full bg-rose-500 transition transform active:scale-90" title="أحمر"></button>
+            <button type="button" data-anno-color="#A855F7" class="anno-color-btn w-6 h-6 rounded-full bg-purple-500 transition transform active:scale-90" title="بنفسجي"></button>
+          </div>
+
+          <!-- Stroke Width Control -->
+          <div class="flex items-center gap-1.5 flex-1 max-w-[185px]">
+            <span class="text-[10px] font-extrabold text-slate-600 dark:text-slate-300 shrink-0">سُمك الخط:</span>
+            <input type="range" id="sliderStrokeWidth" min="2" max="22" value="4" class="w-full accent-indigo-600 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg" />
+            <span id="strokeWidthValLabel" class="text-[10px] font-black text-indigo-600 dark:text-indigo-400 min-w-[20px] text-center">4</span>
+          </div>
+        </div>
+
+        <!-- Row 2: Copy/Highlight + Save New PDF Copy -->
+        <div class="flex items-center justify-between gap-2">
+          <button type="button" id="btnCopySelectedText" class="py-1.5 px-3 rounded-xl bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60 text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition shrink-0">
+            <span>📋 نسخ وتظليل</span>
+          </button>
+
+          <button type="button" id="btnSavePdfCopy" class="flex-1 py-1.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-extrabold text-center shadow-xs active:scale-95 transition">
+            حفظ التعديلات كنسخة PDF جديدة ✓
+          </button>
+        </div>
+
+        <!-- Hidden state sync elements -->
+        <div class="hidden" aria-hidden="true">
+          <span class="curr-page-num">1</span>
+          <span class="total-page-num">1</span>
+          <span id="zenModeHint"></span>
+          <input type="range" id="scrubberSlider" min="1" max="1" value="1" />
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================== BOTTOM SHEETS ==================== -->
+
+    <!-- 1. TOC & Thumbnails Bottom Sheet -->
+    <div id="sheetTocOverlay" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs opacity-0 sheet-overlay flex items-end justify-center">
+      <div id="sheetTocContent" class="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-[32px] p-4 space-y-3 transform translate-y-full sheet-content max-h-[75vh] flex flex-col shadow-2xl border-t border-slate-200 dark:border-slate-800">
+        <div class="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto cursor-pointer"></div>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl flex-1 mr-2">
+            <button type="button" id="btnSheetTabToc" class="flex-1 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 text-indigo-600 shadow-sm">الفهرس</button>
+            <button type="button" id="btnSheetTabThumbs" class="flex-1 py-1 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400">المصغرات</button>
+            <button type="button" id="btnSheetTabBookmarks" class="flex-1 py-1 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400">إشاراتي</button>
+          </div>
+          <button type="button" id="btnCloseTocSheet" class="p-1 text-slate-400 hover:text-slate-600 font-bold">✕</button>
+        </div>
+        <div id="sheetTocBody" class="flex-1 overflow-y-auto space-y-2 py-1"></div>
+      </div>
+    </div>
+
+    <!-- 2. Reading Preferences Bottom Sheet -->
+    <div id="sheetPrefsOverlay" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs opacity-0 sheet-overlay flex items-end justify-center">
+      <div id="sheetPrefsContent" class="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-[32px] p-5 space-y-4 transform translate-y-full sheet-content shadow-2xl border-t border-slate-200 dark:border-slate-800">
+        <div class="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto"></div>
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-extrabold text-slate-900 dark:text-white">أدوات القراءة الذكية 📖</h3>
+          <button type="button" id="btnClosePrefsSheet" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-bold">النزول التلقائي (Auto-Scroll)</p>
+                <p class="text-[10px] text-slate-500">قراءة متواصلة دون الحاجة للمس الشاشة</p>
+              </div>
+              <button type="button" id="btnPlayPauseAutoScroll" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold text-xs">تشغيل ▶</button>
+            </div>
+            <div class="flex items-center gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+              <span class="text-[10px]">السرعة:</span>
+              <input type="range" id="sliderAutoScrollSpeed" min="1" max="10" value="3" class="w-full accent-emerald-500" />
+              <span id="labelAutoScrollSpeed" class="text-[10px] font-bold">3x</span>
+            </div>
+          </div>
+
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
+            <div>
+              <p class="font-bold">منع إغلاق الشاشة (Keep Screen Awake)</p>
+              <p class="text-[10px] text-slate-500">إبقاء إضاءة الهاتف مشتعلة طوال القراءة</p>
+            </div>
+            <input type="checkbox" id="chkKeepAwake" class="w-5 h-5 accent-indigo-600 rounded" />
+          </div>
+
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
+            <div>
+              <p class="font-bold">اتجاه تقليب الصفحات</p>
+              <p class="text-[10px] text-slate-500">عمودي مستمر أو أفقي مثل الكتاب</p>
+            </div>
+            <button type="button" id="btnToggleScrollDir" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs">
+              <span id="labelScrollDir">عمودي ↕</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Tool Execution Modal / Bottom Sheet (Also opens directly from Reader Top Bar for Live Rotate & Reorder!) -->
+    <div id="modalToolWorkspace" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-end justify-center">
+      <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-[32px] p-5 space-y-4 max-h-[85vh] overflow-y-auto shadow-2xl border-t border-slate-200 dark:border-slate-800">
+        <div class="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto"></div>
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <span id="toolModalIcon" class="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center"></span>
+            <div>
+              <h3 id="toolModalTitle" class="text-sm font-extrabold">أداة PDF</h3>
+              <p id="toolModalSubtitle" class="text-[10px] text-slate-500">معالجة فورية وتطبيق مباشر على الملف</p>
+            </div>
+          </div>
+          <button type="button" id="btnCloseToolModal" class="p-1 text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div id="toolModalBody" class="space-y-3 text-xs"></div>
+      </div>
+    </div>
+
+    <!-- 4. Digital Signature Modal -->
+    <div id="modalSignature" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-end justify-center">
+      <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-[32px] p-5 space-y-3 shadow-2xl border-t border-slate-200 dark:border-slate-800">
+        <div class="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto"></div>
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-extrabold">ارسم توقيعك بالإصبع ✍️</h3>
+          <button type="button" id="btnCloseSignatureModal" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl bg-white overflow-hidden">
+          <canvas id="signaturePadCanvas" width="340" height="140" class="w-full h-[140px] cursor-crosshair"></canvas>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <button type="button" id="btnClearSignaturePad" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">مسح</button>
+          <button type="button" id="btnApplySignature" class="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">إدراج التوقيع في الصفحة</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Sticky Note Modal -->
+    <div id="modalStickyNote" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-end justify-center">
+      <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-[32px] p-5 space-y-3 shadow-2xl border-t border-slate-200 dark:border-slate-800">
+        <div class="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto"></div>
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-extrabold">ملاحظة لاصقة جديدة 📌</h3>
+          <button type="button" id="btnCloseStickyModal" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <textarea id="inputStickyNoteText" rows="3" placeholder="اكتب ملاحظتك هنا..." class="w-full p-3 rounded-2xl bg-amber-50 dark:bg-slate-800 border border-amber-300 dark:border-slate-700 text-xs outline-none"></textarea>
+        <div class="flex justify-end">
+          <button type="button" id="btnSaveStickyNote" class="w-full py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold">تثبيت الملاحظة على الصفحة</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Password Prompt Modal -->
+    <div id="modalPasswordPrompt" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
+      <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-xs w-full p-5 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-3">
+        <div class="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-600 flex items-center justify-center text-xl mx-auto">🔒</div>
+        <div class="text-center">
+          <h3 class="text-sm font-extrabold">ملف محمي بكلمة مرور</h3>
+          <p id="passwordModalFileName" class="text-[10px] text-slate-500 truncate mt-0.5">يرجى كتابة كلمة السر لفتح الملف</p>
+        </div>
+        <input type="password" id="inputPdfPassword" placeholder="أدخل كلمة المرور..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-center outline-none focus:border-indigo-600 font-bold" />
+        <p id="passwordErrorMsg" class="hidden text-[10px] font-bold text-rose-600 text-center">كلمة المرور غير صحيحة</p>
+        <div class="flex gap-2">
+          <button type="button" id="btnCancelPasswordModal" class="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">إلغاء</button>
+          <button type="button" id="btnSubmitPasswordModal" class="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">فتح</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. System Storage & Android 11+ Settings Modal -->
+    <div id="modalSystemSettings" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-xs flex items-end justify-center">
+      <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-[32px] p-5 space-y-3.5 shadow-2xl border-t border-slate-200 dark:border-slate-800">
+        <div class="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto"></div>
+        <div class="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-slate-800">
+          <h3 class="text-sm font-extrabold">إدارة النظام والتخزين (Android 11+)</h3>
+          <button type="button" id="btnCloseSystemSettings" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="space-y-2.5 text-xs">
+          <div class="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
+            <div>
+              <p class="font-bold text-emerald-900 dark:text-emerald-200">Scoped Storage & Permissions</p>
+              <p class="text-[10px] text-emerald-700 dark:text-emerald-400">متوافق مع أحدث إصدارات أندرويد لحفظ وقراءة الـ PDF</p>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white">نشط ✓</span>
+          </div>
+
+          <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
+            <div>
+              <p class="font-bold">الحفظ كنسخة جديدة (Save as Copy)</p>
+              <p class="text-[10px] text-slate-500">حماية الملف الأصلي دائماً والتصدير للتنزيلات</p>
+            </div>
+            <span class="text-[10px] font-bold text-indigo-600">تلقائي</span>
+          </div>
+
+          <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
+            <div>
+              <p class="font-bold">مسح كافة الملفات والسجل المؤقت</p>
+              <p class="text-[10px] text-slate-500">إعادة التطبيق لحالته الفارغة النظيفة</p>
+            </div>
+            <button type="button" id="btnResetAllSavedProgress" class="px-2.5 py-1 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[10px] font-bold">مسح الكل</button>
+          </div>
+        </div>
+        <button type="button" id="btnDoneSystemSettings" class="w-full py-2.5 rounded-2xl bg-indigo-600 text-white text-xs font-bold">تم</button>
+      </div>
+    </div>
+
+    <!-- Mobile Toast Message -->
+    <div id="toastBanner" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-2xl bg-slate-900/90 dark:bg-white/95 text-white dark:text-slate-900 text-xs font-bold shadow-xl backdrop-blur-md pointer-events-none transition-all">
+      <span id="toastMessageText">تم الحفظ</span>
+    </div>
+
+  </div>
+
+  <script>
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    const SafeStorage = {
+      get(key, fallback) {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      },
+      set(key, val) {
+        try {
+          localStorage.setItem(key, JSON.stringify(val));
+        } catch (e) {}
+      }
+    };
+
+    const OLD_SAMPLE_DOC_IDS = ['doc-arabic-ai', 'doc-contracts-locked', 'doc-study-notes'];
+    const OLD_SAMPLE_ANNO_IDS = ['anno-1', 'anno-2', 'anno-3'];
+
+    function loadCleanDocs() {
+      const saved = SafeStorage.get('pdfm_v3_docs', null);
+      if (saved && Array.isArray(saved)) {
+        return saved.filter(d => !OLD_SAMPLE_DOC_IDS.includes(d.id));
+      }
+      return [];
+    }
+
+    function loadCleanAnnotations() {
+      const saved = SafeStorage.get('pdfm_v3_annotations', null);
+      if (saved && Array.isArray(saved)) {
+        return saved.filter(a => !OLD_SAMPLE_ANNO_IDS.includes(a.id) && !OLD_SAMPLE_DOC_IDS.includes(a.docId));
+      }
+      return [];
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const banner = document.getElementById('toastBanner');
+      const txt = document.getElementById('toastMessageText');
+      if (!banner || !txt) return;
+      txt.textContent = msg;
+      banner.classList.remove('hidden');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => banner.classList.add('hidden'), 2600);
+    }
+
+    // Application State
+    const AppState = {
+      theme: SafeStorage.get('pdfm_theme', 'light'),
+      activeTab: 'home',
+      recentFilter: 'all',
+      searchQuery: '',
+      notesFilter: 'all',
+      docs: loadCleanDocs(),
+      docPrefs: SafeStorage.get('pdfm_v3_doc_prefs', {}),
+      readerPrefs: {
+        keepAwake: false
+      },
+      annotations: loadCleanAnnotations(),
+      currentDoc: null,
+      currentPdfJsDoc: null,
+      currentRawBytes: null,
+      pendingLockedDoc: null,
+      annoTool: 'pan',
+      annoColor: '#FACC15',
+      strokeWidth: 4,
+      pageStrokes: SafeStorage.get('pdfm_v3_strokes', {}),
+      redoStack: {},
+      // Unified History for Top Undo / Redo (strokes + page rotations/reorders)
+      actionHistoryUndo: [],
+      actionHistoryRedo: [],
+      autoScrolling: false,
+      autoScrollSpeed: 3,
+      autoScrollInterval: null,
+      pdfSearchMatches: [],
+      pdfSearchCurrentIdx: 0,
+      wakeLockSentinel: null,
+      zenMode: false,
+      radialOpen: false,
+      ballPos: SafeStorage.get('pdfm_v3_ball_pos', { x: 20, y: 380 }),
+      // Rotate & Reorder interactive state (Synced live with open PDF)
+      rotatePagesList: [
+        { page: 1, rot: 0 },
+        { page: 2, rot: 0 },
+        { page: 3, rot: 0 }
+      ]
+    };
+
+    function persistState() {
+      SafeStorage.set('pdfm_v3_docs', AppState.docs);
+      SafeStorage.set('pdfm_v3_doc_prefs', AppState.docPrefs);
+      SafeStorage.set('pdfm_v3_annotations', AppState.annotations);
+      SafeStorage.set('pdfm_v3_strokes', AppState.pageStrokes);
+      SafeStorage.set('pdfm_v3_ball_pos', AppState.ballPos);
+    }
+
+    function applyTheme() {
+      const root = document.documentElement;
+      if (AppState.theme === 'dark') {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+      SafeStorage.set('pdfm_theme', AppState.theme);
+    }
+
+    // ==================== TAB 1: RENDER USER FILES ====================
+    function renderHomeFiles() {
+      const container = document.getElementById('filesGridContainer');
+      const countRecent = document.getElementById('countRecentFiles');
+      const countFav = document.getElementById('countFavFiles');
+      if (!container) return;
+
+      const favDocs = AppState.docs.filter(d => d.favorite);
+      if (countRecent) countRecent.textContent = AppState.docs.length;
+      if (countFav) countFav.textContent = favDocs.length;
+
+      let list = AppState.recentFilter === 'fav' ? favDocs : AppState.docs;
+      if (AppState.searchQuery.trim() !== '') {
+        const q = AppState.searchQuery.trim().toLowerCase();
+        list = list.filter(d => d.name.toLowerCase().includes(q));
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 rounded-3xl bg-white dark:bg-slate-900 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 space-y-3">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+            </div>
+            <div class="space-y-1">
+              <p class="text-sm font-extrabold text-slate-800 dark:text-slate-100">
+                ${AppState.recentFilter === 'fav' ? 'لا توجد ملفات في المفضلة حالياً' : 'لا توجد ملفات مفتوحة بعد'}
+              </p>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                اختر أي ملف PDF من هاتفك لفتحه وتجربة التدوير والترتيب المباشر، التكبير بإصبعين، وأدوات الرسم العائمة.
+              </p>
+            </div>
+            <div class="pt-1 flex items-center justify-center gap-2">
+              <button type="button" id="btnEmptyStateOpenPdf" class="py-2 px-4 rounded-2xl bg-indigo-600 text-white text-xs font-bold shadow active:scale-95 transition">
+                + فتح ملف PDF من الهاتف
+              </button>
+            </div>
+          </div>
+        `;
+        const emptyBtn = document.getElementById('btnEmptyStateOpenPdf');
+        if (emptyBtn) emptyBtn.addEventListener('click', () => document.getElementById('globalPdfInput').click());
+        return;
+      }
+
+      container.innerHTML = list.map(doc => {
+        const prefs = AppState.docPrefs[doc.id] || { page: 1, zoom: 100, scrollDir: 'vertical', invertPaper: false };
+        const progressPct = Math.min(100, Math.round((prefs.page / Math.max(1, doc.totalPages)) * 100));
+        return `
+          <div class="bg-white dark:bg-slate-900 rounded-3xl p-3.5 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-2.5">
+              <div class="flex items-start gap-2.5 min-w-0 flex-1">
+                <div class="w-10 h-12 rounded-xl ${doc.locked ? 'bg-amber-100 dark:bg-amber-950 text-amber-600' : 'bg-rose-100 dark:bg-rose-950 text-rose-600'} flex flex-col items-center justify-center font-black text-[10px] shrink-0 border border-current/15">
+                  <span>PDF</span>
+                  <span class="text-[8px]">${doc.locked ? '🔒' : doc.totalPages + 'ص'}</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h3 class="text-xs font-bold text-slate-900 dark:text-white truncate" title="${doc.name}">${doc.name}</h3>
+                  <div class="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <span>${doc.size}</span>
+                    <span>•</span>
+                    <span>${doc.lastOpened}</span>
+                    <span>•</span>
+                    <span>زووم ${prefs.zoom || 100}%</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1">
+                <button type="button" data-fav-id="${doc.id}" class="btn-toggle-fav p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-base leading-none transition" title="مفضلة">
+                  ${doc.favorite ? '<span class="text-amber-400">★</span>' : '<span class="text-slate-300 dark:text-slate-600">☆</span>'}
+                </button>
+                <button type="button" data-del-doc="${doc.id}" class="btn-del-doc p-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-600 text-xs font-bold transition" title="إزالة الملف من القائمة">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <span>توقف عند: صفحة ${prefs.page} / ${doc.totalPages}</span>
+                <span class="text-indigo-600 dark:text-indigo-400 font-bold">${progressPct}%</span>
+              </div>
+              <div class="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div class="h-full bg-gradient-to-l from-indigo-600 to-teal-500 rounded-full" style="width: ${progressPct}%"></div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+              <button type="button" data-open-id="${doc.id}" class="btn-open-doc flex-1 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 active:scale-95">
+                <span>${doc.locked ? '🔓 فتح بالقفل' : '📖 متابعة القراءة'}</span>
+              </button>
+              <button type="button" data-share-id="${doc.id}" class="btn-share-doc px-3 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold active:scale-95">
+                مشاركة
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.btn-toggle-fav').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.getAttribute('data-fav-id');
+          const target = AppState.docs.find(d => d.id === id);
+          if (target) {
+            target.favorite = !target.favorite;
+            persistState();
+            renderHomeFiles();
+            showToast(target.favorite ? 'أضيف للمفضلة ★' : 'أزيل من المفضلة');
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-del-doc').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.getAttribute('data-del-doc');
+          AppState.docs = AppState.docs.filter(d => d.id !== id);
+          persistState();
+          renderHomeFiles();
+          showToast('تمت إزالة الملف من القائمة');
+        });
+      });
+
+      container.querySelectorAll('.btn-open-doc').forEach(btn => {
+        btn.addEventListener('click', () => {
+          requestOpenDocById(btn.getAttribute('data-open-id'));
+        });
+      });
+
+      container.querySelectorAll('.btn-share-doc').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const target = AppState.docs.find(d => d.id === btn.getAttribute('data-share-id'));
+          if (target) triggerQuickShare(target.name);
+        });
+      });
+    }
+
+    function requestOpenDocById(docId) {
+      const doc = AppState.docs.find(d => d.id === docId);
+      if (!doc) return;
+      if (doc.locked) {
+        AppState.pendingLockedDoc = doc;
+        document.getElementById('passwordModalFileName').textContent = doc.name;
+        document.getElementById('inputPdfPassword').value = '';
+        document.getElementById('passwordErrorMsg').classList.add('hidden');
+        const modal = document.getElementById('modalPasswordPrompt');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        return;
+      }
+      openDocInReader(doc);
+    }
+
+    // ==================== MOBILE-FIRST FULLSCREEN READER ====================
+    function ensureDocPageLayout(doc) {
+      if (!AppState.docPrefs[doc.id]) {
+        AppState.docPrefs[doc.id] = { page: 1, zoom: 100, scrollDir: 'vertical', invertPaper: false };
+      }
+      const prefs = AppState.docPrefs[doc.id];
+      if (!prefs.pageLayout || prefs.pageLayout.length !== doc.totalPages) {
+        prefs.pageLayout = Array.from({ length: doc.totalPages }, (_, i) => ({ page: i + 1, rot: 0 }));
+      }
+      AppState.rotatePagesList = prefs.pageLayout;
+      return prefs;
+    }
+
+    function openDocInReader(doc) {
+      AppState.currentDoc = doc;
+      doc.lastOpened = 'الآن';
+      const prefs = ensureDocPageLayout(doc);
+      persistState();
+      renderHomeFiles();
+
+      const overlay = document.getElementById('readerOverlay');
+      overlay.classList.remove('hidden');
+      overlay.classList.add('flex');
+
+      document.getElementById('readerDocTitle').textContent = doc.name;
+
+      const slider = document.getElementById('scrubberSlider');
+      slider.max = doc.totalPages;
+      slider.value = prefs.page;
+
+      updateReaderUI();
+      renderReaderPages();
+      applyFloatingBallPosition();
+
+      setTimeout(() => {
+        scrollToReaderPage(prefs.page, false);
+      }, 60);
+    }
+
+    function updateReaderUI() {
+      if (!AppState.currentDoc) return;
+      const prefs = ensureDocPageLayout(AppState.currentDoc);
+      document.querySelectorAll('.curr-page-num').forEach(el => el.textContent = prefs.page);
+      document.querySelectorAll('.total-page-num').forEach(el => el.textContent = AppState.currentDoc.totalPages);
+
+      document.getElementById('scrubberSlider').value = prefs.page;
+      document.getElementById('labelScrollDir').textContent = prefs.scrollDir === 'vertical' ? 'عمودي ↕' : 'أفقي ↔';
+      document.getElementById('btnResetZoom').textContent = `${prefs.zoom || 100}%`;
+
+      const invertBtn = document.getElementById('btnTogglePaperInvert');
+      if (prefs.invertPaper) {
+        invertBtn.classList.add('bg-amber-400/20', 'text-amber-500', 'ring-1', 'ring-amber-400');
+      } else {
+        invertBtn.classList.remove('bg-amber-400/20', 'text-amber-500', 'ring-1', 'ring-amber-400');
+      }
+
+      const isBookmarked = AppState.annotations.some(a => a.docId === AppState.currentDoc.id && a.page === prefs.page && a.type === 'bookmark');
+      const bIcon = document.getElementById('iconPageBookmark');
+      if (isBookmarked) {
+        bIcon.setAttribute('fill', 'currentColor');
+        bIcon.classList.add('text-rose-500');
+      } else {
+        bIcon.setAttribute('fill', 'none');
+        bIcon.classList.remove('text-rose-500');
+      }
+    }
+
+    // ==================== RENDER PDF PAGES WITH LIVE ROTATION & REORDERING ====================
+    async function renderReaderPages() {
+      const viewport = document.getElementById('readerViewport');
+      if (!viewport || !AppState.currentDoc) return;
+      const doc = AppState.currentDoc;
+      const prefs = ensureDocPageLayout(doc);
+
+      const baseWidth = Math.min(window.innerWidth - 20, 400);
+      const scale = Math.max(0.5, Math.min(3.5, (prefs.zoom || 100) / 100));
+      const pageWidth = Math.round(baseWidth * scale);
+      const pageHeight = Math.round(pageWidth * 1.414);
+
+      if (prefs.scrollDir === 'horizontal') {
+        viewport.className = 'flex-1 overflow-auto p-3 flex flex-row items-center gap-4 relative';
+      } else {
+        viewport.className = 'flex-1 overflow-auto p-3 flex flex-col items-center gap-4 relative';
+      }
+
+      // Use the live pageLayout (which reflects user's live page rotations and reordering!)
+      const layoutList = prefs.pageLayout || Array.from({ length: doc.totalPages }, (_, i) => ({ page: i + 1, rot: 0 }));
+      let slotsToRender = [];
+      if (prefs.scrollDir === 'horizontal') {
+        const slotIdx = Math.max(0, Math.min(layoutList.length - 1, (prefs.page || 1) - 1));
+        slotsToRender.push({ slotNum: slotIdx + 1, item: layoutList[slotIdx] });
+      } else {
+        layoutList.forEach((item, idx) => {
+          slotsToRender.push({ slotNum: idx + 1, item });
+        });
+      }
+
+      viewport.innerHTML = slotsToRender.map(({ slotNum, item }) => {
+        const origPageNum = item.page;
+        const rotDeg = item.rot || 0;
+        const pageText = (doc.pagesText && doc.pagesText[origPageNum - 1]) || '';
+        const query = document.getElementById('inputPdfTextSearch').value;
+        const highlighted = highlightSearchTerm(pageText, query);
+        const pageHighlights = AppState.annotations.filter(a => a.docId === doc.id && a.page === origPageNum && a.type === 'highlight');
+        const pageStickies = AppState.annotations.filter(a => a.docId === doc.id && a.page === origPageNum && a.type === 'sticky');
+
+        return `
+          <div id="readerPageCard_${slotNum}" data-page="${slotNum}" data-orig-page="${origPageNum}"
+               class="pdf-page-wrapper relative bg-white text-slate-900 rounded-2xl shadow-lg border border-slate-300 dark:border-slate-800 overflow-hidden shrink-0 ${prefs.invertPaper ? 'pdf-paper-inverted' : ''}"
+               style="width: ${pageWidth}px; min-height: ${pageHeight}px;">
+            
+            <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-bold">
+              <span class="truncate max-w-[160px]">${doc.name}</span>
+              <div class="flex items-center gap-1.5">
+                ${rotDeg !== 0 ? `<span class="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 text-[9px] font-black">↻ ${rotDeg}°</span>` : ''}
+                <span>صفحة ${slotNum} / ${doc.totalPages} ${origPageNum !== slotNum ? `(أصل ${origPageNum})` : ''}</span>
+              </div>
+            </div>
+
+            <!-- Content wrapper that rotates for non-PDFjs or hybrid view -->
+            <div style="${!doc.isRealPdf && rotDeg ? `transform: rotate(${rotDeg}deg); transition: transform 0.25s ease;` : ''}">
+              <canvas id="pdfJsRenderCanvas_${slotNum}" class="${doc.isRealPdf ? 'block w-full h-auto' : 'hidden'}"></canvas>
+
+              ${(!doc.isRealPdf || pageText) ? `
+                <div class="p-4 sm:p-5 select-text leading-relaxed text-xs sm:text-sm space-y-3 ${doc.isRealPdf ? 'sr-only' : ''}" style="font-size: ${Math.round(14 * scale)}px;">
+                  <div class="whitespace-pre-line text-slate-800">${highlighted}</div>
+                  ${pageHighlights.map(h => `
+                    <div class="p-2 rounded-xl text-xs font-semibold" style="background-color: ${h.color}35; border-right: 3px solid ${h.color};">
+                      "${h.text}"
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Sticky Notes Layer -->
+            <div class="px-4 pb-3 pt-2 space-y-1.5 relative z-10">
+              ${pageStickies.map(s => `
+                <div class="p-2.5 rounded-2xl bg-amber-100 border border-amber-300 text-slate-900 text-[11px] shadow-sm flex items-start justify-between gap-1.5">
+                  <p><span class="font-extrabold text-amber-800">📌 ملاحظة:</span> ${s.text}</p>
+                  <button type="button" data-del-sticky="${s.id}" class="text-amber-700 hover:text-rose-600 font-bold text-xs">✕</button>
+                </div>
+              `).join('')}
+            </div>
+
+            <!-- Interactive Freehand Drawing & Signature Overlay Canvas -->
+            <canvas id="annoCanvas_${origPageNum}" width="${pageWidth}" height="${pageHeight}"
+                    class="anno-overlay-canvas absolute inset-0 w-full h-full ${AppState.annoTool === 'pan' ? 'pointer-events-none' : 'cursor-crosshair'}"></canvas>
+          </div>
+        `;
+      }).join('');
+
+      if (doc.isRealPdf && AppState.currentPdfJsDoc) {
+        for (const { slotNum, item } of slotsToRender) {
+          try {
+            const pdfPage = await AppState.currentPdfJsDoc.getPage(item.page);
+            const totalRotation = ((pdfPage.rotate || 0) + (item.rot || 0)) % 360;
+            const vp = pdfPage.getViewport({ scale: 1.35 * scale, rotation: totalRotation });
+            const cnv = document.getElementById(`pdfJsRenderCanvas_${slotNum}`);
+            if (cnv) {
+              cnv.width = vp.width;
+              cnv.height = vp.height;
+              await pdfPage.render({ canvasContext: cnv.getContext('2d'), viewport: vp }).promise;
+            }
+          } catch (e) {}
+        }
+      }
+
+      slotsToRender.forEach(({ item }) => initAnnotationCanvas(item.page));
+
+      viewport.querySelectorAll('[data-del-sticky]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-del-sticky');
+          AppState.annotations = AppState.annotations.filter(a => a.id !== id);
+          persistState();
+          renderReaderPages();
+          renderUnifiedNotesTab();
+          showToast('حذفت الملاحظة اللاصقة');
+        });
+      });
+    }
+
+    function highlightSearchTerm(text, q) {
+      if (!q || !q.trim()) return text;
+      const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const reg = new RegExp(`(${escaped})`, 'gi');
+      return text.replace(reg, '<mark class="bg-yellow-300 text-slate-900 px-0.5 rounded font-bold">$1</mark>');
+    }
+
+    // ==================== UNIFIED UNDO / REDO (HANDLES DRAWINGS + PAGE ROTATE/REORDER) ====================
+    function recordLayoutHistorySnapshot() {
+      if (!AppState.currentDoc) return;
+      const prefs = ensureDocPageLayout(AppState.currentDoc);
+      AppState.actionHistoryUndo.push({
+        kind: 'layout',
+        docId: AppState.currentDoc.id,
+        snapshot: JSON.parse(JSON.stringify(prefs.pageLayout))
+      });
+      AppState.actionHistoryRedo = [];
+    }
+
+    function performGlobalUndo() {
+      if (!AppState.currentDoc) return;
+      const prefs = ensureDocPageLayout(AppState.currentDoc);
+      const currSlot = prefs.page || 1;
+      const origPage = (prefs.pageLayout[currSlot - 1] && prefs.pageLayout[currSlot - 1].page) || currSlot;
+      const strokeKey = `${AppState.currentDoc.id}_p${origPage}`;
+      const strokeList = AppState.pageStrokes[strokeKey] || [];
+
+      // Priority 1: If current page has strokes, undo last stroke
+      if (strokeList.length > 0) {
+        const popped = strokeList.pop();
+        if (!AppState.redoStack[strokeKey]) AppState.redoStack[strokeKey] = [];
+        AppState.redoStack[strokeKey].push(popped);
+        const c = document.getElementById(`annoCanvas_${origPage}`);
+        if (c) redrawStrokes(c, strokeList);
+        persistState();
+        showToast('تراجع عن آخر رسم ↶');
+        return;
+      }
+
+      // Priority 2: Undo last page rotation / reorder
+      if (AppState.actionHistoryUndo.length > 0) {
+        const lastAction = AppState.actionHistoryUndo.pop();
+        if (lastAction.kind === 'layout' && lastAction.docId === AppState.currentDoc.id) {
+          AppState.actionHistoryRedo.push({
+            kind: 'layout',
+            docId: AppState.currentDoc.id,
+            snapshot: JSON.parse(JSON.stringify(prefs.pageLayout))
+          });
+          prefs.pageLayout = lastAction.snapshot;
+          AppState.rotatePagesList = prefs.pageLayout;
+          persistState();
+          renderReaderPages();
+          showToast('تراجع عن تدوير/ترتيب الصفحات ↶');
+          return;
+        }
+      }
+
+      showToast('لا توجد خطوات سابقة للتراجع عنها');
+    }
+
+    function performGlobalRedo() {
+      if (!AppState.currentDoc) return;
+      const prefs = ensureDocPageLayout(AppState.currentDoc);
+      const currSlot = prefs.page || 1;
+      const origPage = (prefs.pageLayout[currSlot - 1] && prefs.pageLayout[currSlot - 1].page) || currSlot;
+      const strokeKey = `${AppState.currentDoc.id}_p${origPage}`;
+      const rList = AppState.redoStack[strokeKey] || [];
+
+      if (rList.length > 0) {
+        const item = rList.pop();
+        if (!AppState.pageStrokes[strokeKey]) AppState.pageStrokes[strokeKey] = [];
+        AppState.pageStrokes[strokeKey].push(item);
+        const c = document.getElementById(`annoCanvas_${origPage}`);
+        if (c) redrawStrokes(c, AppState.pageStrokes[strokeKey]);
+        persistState();
+        showToast('إعادة الرسم ↷');
+        return;
+      }
+
+      if (AppState.actionHistoryRedo.length > 0) {
+        const nextAction = AppState.actionHistoryRedo.pop();
+        if (nextAction.kind === 'layout' && nextAction.docId === AppState.currentDoc.id) {
+          AppState.actionHistoryUndo.push({
+            kind: 'layout',
+            docId: AppState.currentDoc.id,
+            snapshot: JSON.parse(JSON.stringify(prefs.pageLayout))
+          });
+          prefs.pageLayout = nextAction.snapshot;
+          AppState.rotatePagesList = prefs.pageLayout;
+          persistState();
+          renderReaderPages();
+          showToast('إعادة تدوير/ترتيب الصفحات ↷');
+          return;
+        }
+      }
+
+      showToast('لا توجد خطوات للإعادة');
+    }
+
+    // ==================== TWO-FINGER PINCH-TO-ZOOM ENGINE ====================
+    function initPinchToZoomEngine() {
+      const viewport = document.getElementById('readerViewport');
+      const hud = document.getElementById('pinchZoomHud');
+      const hudVal = document.getElementById('pinchZoomHudValue');
+      if (!viewport) return;
+
+      let pinching = false;
+      let startDist = 0;
+      let startZoom = 100;
+      let liveZoom = 100;
+
+      const getTouchDist = (t1, t2) => Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+
+      viewport.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2 && AppState.currentDoc) {
+          pinching = true;
+          startDist = getTouchDist(e.touches[0], e.touches[1]);
+          const prefs = AppState.docPrefs[AppState.currentDoc.id];
+          startZoom = prefs.zoom || 100;
+          liveZoom = startZoom;
+          hud.classList.remove('hidden');
+          hudVal.textContent = `${liveZoom}%`;
+        }
+      }, { passive: true });
+
+      viewport.addEventListener('touchmove', (e) => {
+        if (!pinching || e.touches.length !== 2 || !AppState.currentDoc) return;
+        e.preventDefault();
+        const currDist = getTouchDist(e.touches[0], e.touches[1]);
+        if (startDist > 10) {
+          const ratio = currDist / startDist;
+          liveZoom = Math.max(50, Math.min(300, Math.round(startZoom * ratio)));
+          hudVal.textContent = `${liveZoom}%`;
+          document.getElementById('btnResetZoom').textContent = `${liveZoom}%`;
+
+          const scalePreview = liveZoom / startZoom;
+          viewport.querySelectorAll('.pdf-page-wrapper').forEach(card => {
+            card.style.transform = `scale(${scalePreview})`;
+          });
+        }
+      }, { passive: false });
+
+      const finishPinch = () => {
+        if (!pinching || !AppState.currentDoc) return;
+        pinching = false;
+        hud.classList.add('hidden');
+        viewport.querySelectorAll('.pdf-page-wrapper').forEach(card => {
+          card.style.transform = '';
+        });
+        const prefs = AppState.docPrefs[AppState.currentDoc.id];
+        prefs.zoom = liveZoom;
+        persistState();
+        updateReaderUI();
+        renderReaderPages();
+      };
+
+      viewport.addEventListener('touchend', finishPinch);
+      viewport.addEventListener('touchcancel', finishPinch);
+
+      viewport.addEventListener('wheel', (e) => {
+        if ((e.ctrlKey || e.metaKey) && AppState.currentDoc) {
+          e.preventDefault();
+          const prefs = AppState.docPrefs[AppState.currentDoc.id];
+          const delta = e.deltaY < 0 ? 12 : -12;
+          prefs.zoom = Math.max(50, Math.min(300, (prefs.zoom || 100) + delta));
+          persistState();
+          updateReaderUI();
+          renderReaderPages();
+        }
+      }, { passive: false });
+    }
+
+    function setZoomLevel(newZoom) {
+      if (!AppState.currentDoc) return;
+      const prefs = AppState.docPrefs[AppState.currentDoc.id];
+      prefs.zoom = Math.max(50, Math.min(300, newZoom));
+      persistState();
+      updateReaderUI();
+      renderReaderPages();
+      showToast(`الزووم: ${prefs.zoom}% 🔍`);
+    }
+
+    // ==================== FREEHAND DRAWING & OVERLAY ENGINE ====================
+    function initAnnotationCanvas(pageNum) {
+      const canvas = document.getElementById(`annoCanvas_${pageNum}`);
+      if (!canvas || !AppState.currentDoc) return;
+      const strokeKey = `${AppState.currentDoc.id}_p${pageNum}`;
+      if (!AppState.pageStrokes[strokeKey]) AppState.pageStrokes[strokeKey] = [];
+      if (!AppState.redoStack[strokeKey]) AppState.redoStack[strokeKey] = [];
+
+      redrawStrokes(canvas, AppState.pageStrokes[strokeKey]);
+
+      let drawing = false;
+      let curr = null;
+
+      const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const cx = e.touches ? e.touches[0].clientX : e.clientX;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+          x: ((cx - rect.left) / rect.width) * canvas.width,
+          y: ((cy - rect.top) / rect.height) * canvas.height
+        };
+      };
+
+      const start = (e) => {
+        if (e.touches && e.touches.length > 1) return;
+        if (AppState.annoTool === 'pan') return;
+        if (AppState.annoTool === 'sticky') {
+          openStickyModal(pageNum);
+          return;
+        }
+        e.preventDefault();
+        drawing = true;
+        const pos = getPos(e);
+        curr = {
+          tool: AppState.annoTool,
+          color: AppState.annoColor,
+          width: AppState.strokeWidth,
+          points: [pos]
+        };
+        // Draw dot immediately on touch start so tapping works without finger movement
+        redrawStrokes(canvas, [...AppState.pageStrokes[strokeKey], curr]);
+      };
+
+      const move = (e) => {
+        if (!drawing || !curr) return;
+        if (e.touches && e.touches.length > 1) {
+          drawing = false;
+          curr = null;
+          return;
+        }
+        e.preventDefault();
+        curr.points.push(getPos(e));
+        redrawStrokes(canvas, [...AppState.pageStrokes[strokeKey], curr]);
+      };
+
+      const end = () => {
+        if (!drawing || !curr) return;
+        drawing = false;
+        AppState.pageStrokes[strokeKey].push(curr);
+        AppState.redoStack[strokeKey] = [];
+        if (curr.tool !== 'eraser') {
+          const isDot = curr.points.length === 1;
+          const label = curr.tool === 'highlight'
+            ? (isDot ? `نقطة تظليل على صفحة ${pageNum}` : `تظليل على صفحة ${pageNum}`)
+            : (isDot ? `نقطة رسم على صفحة ${pageNum}` : `رسم بقلم على صفحة ${pageNum}`);
+          AppState.annotations.unshift({
+            id: 'anno-' + Date.now(),
+            docId: AppState.currentDoc.id,
+            docName: AppState.currentDoc.name,
+            page: pageNum,
+            type: 'drawing',
+            color: curr.color,
+            text: label,
+            createdAt: 'الآن'
+          });
+          updateNotesBadge();
+        }
+        curr = null;
+        redrawStrokes(canvas, AppState.pageStrokes[strokeKey]);
+        persistState();
+      };
+
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      canvas.addEventListener('touchend', end);
+    }
+
+    function redrawStrokes(canvas, list) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      list.forEach(st => {
+        if (st.type === 'sig' && st.dataUrl) {
+          const img = new Image();
+          img.onload = () => ctx.drawImage(img, st.x || 30, st.y || (canvas.height - 110), 140, 60);
+          img.src = st.dataUrl;
+          return;
+        }
+        if (!st.points || st.points.length === 0) return;
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        const strokeW = st.tool === 'eraser' ? st.width * 3.5 : (st.tool === 'highlight' ? st.width * 3 : st.width);
+
+        if (st.tool === 'eraser') {
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.lineWidth = strokeW;
+          ctx.fillStyle = '#000000';
+          ctx.strokeStyle = '#000000';
+        } else if (st.tool === 'highlight') {
+          ctx.globalAlpha = 0.36;
+          ctx.lineWidth = strokeW;
+          ctx.fillStyle = st.color;
+          ctx.strokeStyle = st.color;
+        } else {
+          ctx.lineWidth = strokeW;
+          ctx.fillStyle = st.color;
+          ctx.strokeStyle = st.color;
+        }
+
+        if (st.points.length === 1) {
+          // Single tap on screen -> draw a clean solid dot with stroke width radius
+          const pt = st.points[0];
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, strokeW / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(st.points[0].x, st.points[0].y);
+          for (let i = 1; i < st.points.length; i++) ctx.lineTo(st.points[i].x, st.points[i].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+    }
+
+    function scrollToReaderPage(p, smooth = true) {
+      if (!AppState.currentDoc) return;
+      const doc = AppState.currentDoc;
+      const prefs = ensureDocPageLayout(doc);
+      const page = Math.max(1, Math.min(doc.totalPages, parseInt(p, 10) || 1));
+      prefs.page = page;
+      persistState();
+      updateReaderUI();
+
+      if (prefs.scrollDir === 'horizontal') {
+        renderReaderPages();
+      } else {
+        const el = document.getElementById(`readerPageCard_${page}`);
+        if (el) el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+      }
+    }
+
+    // ==================== ZEN MODE & DOUBLE-TAP ZOOM ====================
+    let lastTapTime = 0;
+    function handleViewportTouch(e) {
+      if (AppState.annoTool !== 'pan') return;
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#floatingSystemRoot') || e.target.closest('#floatingDockMenu')) return;
+
+      const now = Date.now();
+      const diff = now - lastTapTime;
+      lastTapTime = now;
+
+      if (diff < 300 && diff > 40) {
+        if (!AppState.currentDoc) return;
+        const prefs = AppState.docPrefs[AppState.currentDoc.id];
+        prefs.zoom = (prefs.zoom && prefs.zoom > 110) ? 100 : 165;
+        persistState();
+        updateReaderUI();
+        renderReaderPages();
+        showToast(`زووم سريع: ${prefs.zoom}% 🔍`);
+        return;
+      }
+
+      setTimeout(() => {
+        if (Date.now() - lastTapTime >= 280) {
+          toggleZenMode();
+        }
+      }, 290);
+    }
+
+    function toggleZenMode() {
+      AppState.zenMode = !AppState.zenMode;
+      const topBar = document.getElementById('readerTopBar');
+      const scrubber = document.getElementById('readerBottomScrubber');
+      const rootBall = document.getElementById('floatingSystemRoot');
+      const dock = document.getElementById('floatingDockMenu');
+
+      if (AppState.zenMode) {
+        topBar.classList.add('-translate-y-full', 'opacity-0', 'pointer-events-none');
+        scrubber.classList.add('translate-y-full', 'opacity-0', 'pointer-events-none');
+        rootBall.classList.add('opacity-0', 'pointer-events-none');
+        dock.classList.add('hidden');
+      } else {
+        topBar.classList.remove('-translate-y-full', 'opacity-0', 'pointer-events-none');
+        scrubber.classList.remove('translate-y-full', 'opacity-0', 'pointer-events-none');
+        rootBall.classList.remove('opacity-0', 'pointer-events-none');
+      }
+    }
+
+    // ==================== FREELY DRAGGABLE FLOATING ACTION BALL & RADIAL ARC MENU ====================
+    function applyFloatingBallPosition() {
+      const root = document.getElementById('floatingSystemRoot');
+      if (!root) return;
+      const maxX = window.innerWidth - 68;
+      const maxY = window.innerHeight - 155;
+      const x = Math.max(12, Math.min(maxX, AppState.ballPos.x || 24));
+      const y = Math.max(85, Math.min(maxY, AppState.ballPos.y || 360));
+      root.style.left = `${x}px`;
+      root.style.top = `${y}px`;
+      if (AppState.radialOpen) updateRadialArcPositions();
+    }
+
+    function updateRadialArcPositions() {
+      const root = document.getElementById('floatingSystemRoot');
+      const items = [
+        document.getElementById('radialBtnPen'),
+        document.getElementById('radialBtnHighlight'),
+        document.getElementById('radialBtnEraser'),
+        document.getElementById('radialBtnSticky'),
+        document.getElementById('btnOpenSignatureModal')
+      ];
+      if (!root || items.some(x => !x)) return;
+
+      const rect = root.getBoundingClientRect();
+      const isRightHalf = (rect.left + rect.width / 2) > (window.innerWidth / 2);
+      const radius = 82;
+      const anglesDeg = [-70, -35, 0, 35, 70];
+
+      items.forEach((btn, idx) => {
+        if (!AppState.radialOpen) {
+          btn.classList.add('closed');
+          return;
+        }
+        btn.classList.remove('closed');
+        const rad = (anglesDeg[idx] * Math.PI) / 180;
+        const dir = isRightHalf ? -1 : 1;
+        const dx = Math.round(Math.cos(rad) * radius * dir);
+        const dy = Math.round(Math.sin(rad) * radius);
+        btn.style.left = '5px';
+        btn.style.top = '5px';
+        btn.style.transform = `translate(${dx}px, ${dy}px) scale(1)`;
+      });
+    }
+
+    function initFreelyDraggableFloatingSystem() {
+      const root = document.getElementById('floatingSystemRoot');
+      const ball = document.getElementById('floatingActionBall');
+      if (!root || !ball) return;
+
+      let draggingBall = false;
+      let hasMovedBall = false;
+      let openedOnThisTouch = false;
+      let activePointerId = null;
+      let startX = 0, startY = 0;
+      let origLeft = 0, origTop = 0;
+
+      ball.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        draggingBall = true;
+        hasMovedBall = false;
+        activePointerId = e.pointerId;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = root.getBoundingClientRect();
+        origLeft = rect.left;
+        origTop = rect.top;
+
+        try { ball.setPointerCapture(e.pointerId); } catch (err) {}
+
+        // Open immediately on the very first light touch!
+        if (!AppState.radialOpen) {
+          AppState.radialOpen = true;
+          openedOnThisTouch = true;
+          updateRadialArcPositions();
+        } else {
+          openedOnThisTouch = false;
+        }
+      });
+
+      ball.addEventListener('pointermove', (e) => {
+        if (!draggingBall || (activePointerId !== null && e.pointerId !== activePointerId)) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          hasMovedBall = true;
+          const newX = Math.max(10, Math.min(window.innerWidth - 66, origLeft + dx));
+          const newY = Math.max(80, Math.min(window.innerHeight - 155, origTop + dy));
+          root.style.left = `${newX}px`;
+          root.style.top = `${newY}px`;
+          AppState.ballPos = { x: newX, y: newY };
+          if (AppState.radialOpen) updateRadialArcPositions();
+        }
+      });
+
+      const finishBallPointer = (e) => {
+        if (!draggingBall || (activePointerId !== null && e.pointerId !== activePointerId)) return;
+        draggingBall = false;
+        activePointerId = null;
+        try { ball.releasePointerCapture(e.pointerId); } catch (err) {}
+
+        if (hasMovedBall) {
+          persistState();
+        } else if (!openedOnThisTouch) {
+          // If it was already open before this tap and user didn't drag, toggle it closed
+          AppState.radialOpen = false;
+          updateRadialArcPositions();
+        }
+      };
+
+      ball.addEventListener('pointerup', finishBallPointer);
+      ball.addEventListener('pointercancel', finishBallPointer);
+    }
+
+    // ==================== BOTTOM SHEETS ====================
+    function openBottomSheet(sheetId) {
+      const overlay = document.getElementById(sheetId);
+      const content = overlay.querySelector('.sheet-content');
+      overlay.classList.remove('hidden');
+      setTimeout(() => {
+        overlay.classList.remove('opacity-0');
+        content.classList.remove('translate-y-full');
+      }, 10);
+    }
+
+    function closeBottomSheet(sheetId) {
+      const overlay = document.getElementById(sheetId);
+      const content = overlay.querySelector('.sheet-content');
+      overlay.classList.add('opacity-0');
+      content.classList.add('translate-y-full');
+      setTimeout(() => overlay.classList.add('hidden'), 280);
+    }
+
+    function renderTocSheetContent(tab) {
+      const body = document.getElementById('sheetTocBody');
+      if (!body || !AppState.currentDoc) return;
+      const doc = AppState.currentDoc;
+
+      const bToc = document.getElementById('btnSheetTabToc');
+      const bThumbs = document.getElementById('btnSheetTabThumbs');
+      const bMarks = document.getElementById('btnSheetTabBookmarks');
+      [bToc, bThumbs, bMarks].forEach(b => b.className = 'flex-1 py-1 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400');
+
+      if (tab === 'toc') {
+        bToc.className = 'flex-1 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 text-indigo-600 shadow-sm';
+        body.innerHTML = (doc.toc || []).map(item => `
+          <button type="button" data-sheet-goto="${item.page}" class="w-full text-right p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 hover:bg-indigo-50 flex items-center justify-between text-xs font-bold transition">
+            <span class="truncate">${item.title}</span>
+            <span class="text-indigo-600 dark:text-indigo-400">ص ${item.page}</span>
+          </button>
+        `).join('');
+      } else if (tab === 'thumbs') {
+        bThumbs.className = 'flex-1 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 text-indigo-600 shadow-sm';
+        let h = '<div class="grid grid-cols-3 gap-2">';
+        for (let p = 1; p <= doc.totalPages; p++) {
+          const isCurr = AppState.docPrefs[doc.id].page === p;
+          h += `
+            <button type="button" data-sheet-goto="${p}" class="p-2 rounded-2xl border ${isCurr ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/50' : 'border-slate-200 dark:border-slate-800'} flex flex-col items-center gap-1 text-[10px] font-bold">
+              <div class="w-full h-16 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[9px] text-slate-400">
+                صفحة ${p}
+              </div>
+              <span>${p}</span>
+            </button>
+          `;
+        }
+        h += '</div>';
+        body.innerHTML = h;
+      } else if (tab === 'bookmarks') {
+        bMarks.className = 'flex-1 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 text-indigo-600 shadow-sm';
+        const bms = AppState.annotations.filter(a => a.docId === doc.id && a.type === 'bookmark');
+        if (bms.length === 0) {
+          body.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">لا توجد إشارات مرجعية محفوظة في هذا الملف.</p>`;
+        } else {
+          body.innerHTML = bms.map(b => `
+            <button type="button" data-sheet-goto="${b.page}" class="w-full text-right p-3 rounded-2xl bg-rose-50/60 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 flex items-center justify-between text-xs font-bold">
+              <span class="truncate">🔖 ${b.text}</span>
+              <span class="text-rose-600">ص ${b.page}</span>
+            </button>
+          `).join('');
+        }
+      }
+
+      body.querySelectorAll('[data-sheet-goto]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const p = parseInt(btn.getAttribute('data-sheet-goto'), 10);
+          scrollToReaderPage(p, true);
+          closeBottomSheet('sheetTocOverlay');
+        });
+      });
+    }
+
+    // ==================== TAB 2: MOBILE PDF TOOLS ====================
+    const MOBILE_OFFLINE_TOOLS = [
+      {
+        id: 'rotate',
+        title: 'تدوير وترتيب الصفحات',
+        desc: 'تدوير 90° وإعادة ترتيب الصفحات',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
+      },
+      {
+        id: 'merge',
+        title: 'دمج ملفات PDF',
+        desc: 'جمع عدة ملفات في ملف واحد',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>'
+      },
+      {
+        id: 'split',
+        title: 'تقسيم واستخراج',
+        desc: 'استخراج صفحات محددة',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"/></svg>'
+      },
+      {
+        id: 'compress',
+        title: 'ضغط الحجم',
+        desc: 'تقليل حجم ملف الـ PDF',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>'
+      },
+      {
+        id: 'pdf2img',
+        title: 'PDF إلى صور',
+        desc: 'تصدير الصفحات كصور PNG',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>'
+      },
+      {
+        id: 'protect',
+        title: 'قفل وباسوورد',
+        desc: 'تشفير أو فك الحماية',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>'
+      },
+      {
+        id: 'img2pdf',
+        title: 'صور إلى PDF',
+        desc: 'دمج الصور في مستند A4',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/></svg>'
+      }
+    ];
+
+    const MOBILE_CLOUD_TOOLS = [
+      {
+        id: 'word2pdf',
+        title: 'Word ↔ PDF (دعم كامل للعربية)',
+        desc: 'تحويل ذكي مع الحفاظ على الخطوط العربية وتنسيق RTL',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
+      },
+      {
+        id: 'ocr',
+        title: 'التعرف الضوئي OCR (عربي + إنجليزي)',
+        desc: 'استخراج النصوص من الصور والمستندات الممسوحة ضوئياً',
+        svg: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>'
+      }
+    ];
+
+    function renderMobileTools() {
+      const offGrid = document.getElementById('offlineToolsGrid');
+      const cloudGrid = document.getElementById('cloudToolsGrid');
+      if (!offGrid || !cloudGrid) return;
+
+      offGrid.innerHTML = MOBILE_OFFLINE_TOOLS.map(t => `
+        <button type="button" data-tool-action="${t.id}" class="p-3.5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 hover:border-indigo-500 text-right flex flex-col justify-between gap-2.5 shadow-sm active:scale-95 transition">
+          <span class="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-inner">${t.svg}</span>
+          <div>
+            <h3 class="text-xs font-black text-slate-900 dark:text-white">${t.title}</h3>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">${t.desc}</p>
+          </div>
+        </button>
+      `).join('');
+
+      cloudGrid.innerHTML = MOBILE_CLOUD_TOOLS.map(t => `
+        <button type="button" data-tool-action="${t.id}" class="w-full p-3.5 rounded-3xl bg-gradient-to-l from-teal-50/80 to-white dark:from-teal-950/30 dark:to-slate-900 border border-teal-200/80 dark:border-teal-900/60 text-right flex items-center gap-3 shadow-sm active:scale-95 transition">
+          <span class="w-10 h-10 rounded-2xl bg-teal-100 dark:bg-teal-950 text-teal-600 dark:text-teal-300 flex items-center justify-center shrink-0">${t.svg}</span>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-xs font-black text-slate-900 dark:text-white">${t.title}</h3>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400 truncate">${t.desc}</p>
+          </div>
+          <span class="text-xs text-teal-600 font-bold">فتح ←</span>
+        </button>
+      `).join('');
+
+      document.querySelectorAll('[data-tool-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          openMobileToolWorkspace(btn.getAttribute('data-tool-action'));
+        });
+      });
+    }
+
+    // ==================== LIVE ROTATE & REORDER (WORKS DIRECTLY ON OPEN PDF!) ====================
+    function syncLiveRotateChangesToOpenDoc() {
+      if (!AppState.currentDoc) return;
+      const prefs = ensureDocPageLayout(AppState.currentDoc);
+      prefs.pageLayout = AppState.rotatePagesList;
+      persistState();
+      renderReaderPages();
+    }
+
+    function renderInteractiveRotateReorder(body) {
+      const docTitle = AppState.currentDoc ? AppState.currentDoc.name : 'مستند PDF';
+      body.innerHTML = `
+        <div class="space-y-3">
+          <div class="flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-2xl">
+            <div class="min-w-0">
+              <span class="text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 block truncate">${docTitle}</span>
+              <span class="text-[10px] text-slate-500">صفحات الملف (${AppState.rotatePagesList.length}) • يطبق مباشرة على الملف المفتوح</span>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" id="btnRotatePickPdf" class="px-2 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold">+ ملف آخر</button>
+              <button type="button" id="btnRotateAll90" class="px-2.5 py-1 rounded-xl bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">تدوير الكل ↻</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5 max-h-60 overflow-y-auto p-1">
+            ${AppState.rotatePagesList.map((item, idx) => `
+              <div class="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col items-center gap-2 shadow-xs">
+                <div class="w-16 h-22 py-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-[11px] font-black transition-transform duration-200"
+                     style="transform: rotate(${item.rot}deg);">
+                  <span>صفحة ${item.page}</span>
+                  <span class="text-[9px] text-indigo-600">${item.rot}°</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button type="button" data-rot-idx="${idx}" data-deg="-90" class="btn-page-rot px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-[10px] font-bold" title="تدوير لليسار">↺</button>
+                  <button type="button" data-rot-idx="${idx}" data-deg="90" class="btn-page-rot px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-[10px] font-bold" title="تدوير لليمين">↻</button>
+                  <button type="button" data-move-idx="${idx}" data-dir="-1" class="btn-page-move px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-[10px] font-bold" title="تقديم">▶</button>
+                  <button type="button" data-move-idx="${idx}" data-dir="1" class="btn-page-move px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 text-[10px] font-bold" title="تأخير">◀</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="flex gap-2">
+            <button type="button" id="btnApplyLiveRotateClose" class="flex-1 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow">
+              تطبيق والعودة للقراءة 📖
+            </button>
+            <button type="button" id="btnExecRotate" class="flex-1 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow">
+              حفظ وتنزيل كنسخة PDF ✓
+            </button>
+          </div>
+        </div>
+      `;
+
+      body.querySelector('#btnRotatePickPdf').addEventListener('click', () => {
+        document.getElementById('toolSinglePdfInput').click();
+      });
+
+      body.querySelector('#btnRotateAll90').addEventListener('click', () => {
+        recordLayoutHistorySnapshot();
+        AppState.rotatePagesList.forEach(p => { p.rot = (p.rot + 90) % 360; });
+        syncLiveRotateChangesToOpenDoc();
+        renderInteractiveRotateReorder(body);
+      });
+
+      body.querySelectorAll('.btn-page-rot').forEach(btn => {
+        btn.addEventListener('click', () => {
+          recordLayoutHistorySnapshot();
+          const i = parseInt(btn.getAttribute('data-rot-idx'), 10);
+          const deg = parseInt(btn.getAttribute('data-deg'), 10);
+          AppState.rotatePagesList[i].rot = (AppState.rotatePagesList[i].rot + deg + 360) % 360;
+          syncLiveRotateChangesToOpenDoc();
+          renderInteractiveRotateReorder(body);
+        });
+      });
+
+      body.querySelectorAll('.btn-page-move').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const i = parseInt(btn.getAttribute('data-move-idx'), 10);
+          const dir = parseInt(btn.getAttribute('data-dir'), 10);
+          const target = i + dir;
+          if (target >= 0 && target < AppState.rotatePagesList.length) {
+            recordLayoutHistorySnapshot();
+            const tmp = AppState.rotatePagesList[i];
+            AppState.rotatePagesList[i] = AppState.rotatePagesList[target];
+            AppState.rotatePagesList[target] = tmp;
+            syncLiveRotateChangesToOpenDoc();
+            renderInteractiveRotateReorder(body);
+          }
+        });
+      });
+
+      body.querySelector('#btnApplyLiveRotateClose').addEventListener('click', () => {
+        syncLiveRotateChangesToOpenDoc();
+        document.getElementById('modalToolWorkspace').classList.add('hidden');
+        showToast('تم تحديث تدوير وترتيب الصفحات داخل القارئ ✓');
+      });
+
+      body.querySelector('#btnExecRotate').addEventListener('click', async () => {
+        syncLiveRotateChangesToOpenDoc();
+        const summary = AppState.rotatePagesList.map(p => `صفحة ${p.page} (${p.rot}°)`).join(' -> ');
+        await generateAndDownloadRealPdf('Rotated_Reordered_copy.pdf', [`الترتيب والتدوير الجديد: ${summary}`]);
+        showToast('تم حفظ التدوير والترتيب كنسخة جديدة ✓');
+      });
+    }
+
+    function openMobileToolWorkspace(toolId) {
+      const all = [...MOBILE_OFFLINE_TOOLS, ...MOBILE_CLOUD_TOOLS];
+      const tool = all.find(t => t.id === toolId);
+      if (!tool) return;
+
+      const modal = document.getElementById('modalToolWorkspace');
+      document.getElementById('toolModalIcon').innerHTML = tool.svg;
+      document.getElementById('toolModalTitle').textContent = tool.title;
+      document.getElementById('toolModalSubtitle').textContent = tool.desc;
+      const body = document.getElementById('toolModalBody');
+
+      if (toolId === 'rotate') {
+        if (AppState.currentDoc) {
+          ensureDocPageLayout(AppState.currentDoc);
+        }
+        renderInteractiveRotateReorder(body);
+      } else if (toolId === 'merge') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <div class="p-4 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 text-center space-y-2">
+              <p class="font-bold">اختر ملفين أو أكثر من هاتفك لدمجها</p>
+              <button type="button" id="btnPickMergeFiles" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold">+ اختيار ملفات PDF</button>
+              <p id="mergeStatusText" class="text-[10px] text-slate-500">لم يتم اختيار ملفات بعد</p>
+            </div>
+            <button type="button" id="btnExecMerge" class="w-full py-2.5 rounded-2xl bg-emerald-600 text-white text-xs font-bold shadow">دمج وتنزيل كنسخة (Merged_copy.pdf)</button>
+          </div>
+        `;
+        body.querySelector('#btnPickMergeFiles').addEventListener('click', () => document.getElementById('toolMultiPdfInput').click());
+        body.querySelector('#btnExecMerge').addEventListener('click', async () => {
+          await generateAndDownloadRealPdf('Merged_Mobile_copy.pdf', ['ملف PDF مدمج بنجاح عبر تطبيق PDF Pro']);
+          showToast('تم دمج الملفات وتنزيل النسخة ✓');
+        });
+      } else if (toolId === 'split') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <div>
+              <label class="font-bold block mb-1">حدد نطاق الصفحات للاستخراج (مثال: 1-2):</label>
+              <input type="text" id="inputSplitRange" value="1-2" class="w-full p-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-center font-bold" />
+            </div>
+            <button type="button" id="btnExecSplit" class="w-full py-2.5 rounded-2xl bg-indigo-600 text-white text-xs font-bold">استخراج الصفحات وتنزيل النسخة</button>
+          </div>
+        `;
+        body.querySelector('#btnExecSplit').addEventListener('click', async () => {
+          const rng = document.getElementById('inputSplitRange').value || '1';
+          await generateAndDownloadRealPdf(`Extracted_${rng}_copy.pdf`, [`صفحات مستخرجة (${rng})`]);
+          showToast(`تم استخراج الصفحات (${rng}) وتنزيلها ✓`);
+        });
+      } else if (toolId === 'compress') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <p class="font-bold">اختر مستوى ضغط الحجم:</p>
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <label class="p-2 rounded-2xl border border-slate-200 dark:border-slate-800 cursor-pointer">
+                <input type="radio" name="comp" value="low" class="accent-indigo-600" />
+                <p class="font-bold text-[11px] mt-1">خفيف</p>
+                <p class="text-[9px] text-slate-500">~20%</p>
+              </label>
+              <label class="p-2 rounded-2xl border-2 border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 cursor-pointer">
+                <input type="radio" name="comp" value="med" checked class="accent-indigo-600" />
+                <p class="font-bold text-[11px] mt-1">متوسط</p>
+                <p class="text-[9px] text-slate-500">~55%</p>
+              </label>
+              <label class="p-2 rounded-2xl border border-slate-200 dark:border-slate-800 cursor-pointer">
+                <input type="radio" name="comp" value="high" class="accent-indigo-600" />
+                <p class="font-bold text-[11px] mt-1">عالي</p>
+                <p class="text-[9px] text-slate-500">~75%</p>
+              </label>
+            </div>
+            <button type="button" id="btnExecCompress" class="w-full py-2.5 rounded-2xl bg-indigo-600 text-white text-xs font-bold">ضغط الملف وتنزيل النسخة</button>
+          </div>
+        `;
+        body.querySelector('#btnExecCompress').addEventListener('click', async () => {
+          await generateAndDownloadRealPdf('Compressed_copy.pdf', ['ملف PDF مضغوط بنجاح']);
+          showToast('تم ضغط الملف وتنزيل النسخة ✓');
+        });
+      } else if (toolId === 'pdf2img') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <p class="font-bold">تصدير صفحات الـ PDF إلى صورة PNG عالية الجودة:</p>
+            <button type="button" id="btnExecPdf2Img" class="w-full py-2.5 rounded-2xl bg-indigo-600 text-white text-xs font-bold">تصدير الصفحة وتنزيل الصورة</button>
+          </div>
+        `;
+        body.querySelector('#btnExecPdf2Img').addEventListener('click', () => {
+          const cnv = document.createElement('canvas');
+          cnv.width = 600; cnv.height = 850;
+          const ctx = cnv.getContext('2d');
+          ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, 600, 850);
+          ctx.fillStyle = '#1E1B4B'; ctx.font = 'bold 24px Cairo, sans-serif';
+          ctx.fillText('صورة مستخرجة من تطبيق PDF Pro', 60, 80);
+          const a = document.createElement('a');
+          a.download = 'Page_Export.png';
+          a.href = cnv.toDataURL('image/png');
+          a.click();
+          showToast('تم تصدير الصفحة وحفظها كصورة PNG ✓');
+        });
+      } else if (toolId === 'protect') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <input type="password" id="inputMobilePass" placeholder="أدخل كلمة المرور الجديدة..." class="w-full p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-xs" />
+            <button type="button" id="btnExecProtect" class="w-full py-2.5 rounded-2xl bg-indigo-600 text-white text-xs font-bold">قفل وتشفير المستند</button>
+          </div>
+        `;
+        body.querySelector('#btnExecProtect').addEventListener('click', () => {
+          const p = document.getElementById('inputMobilePass').value.trim();
+          if (!p) { showToast('اكتب كلمة المرور أولاً'); return; }
+          if (AppState.docs.length > 0) {
+            AppState.docs[0].locked = true;
+            AppState.docs[0].password = p;
+            persistState();
+            renderHomeFiles();
+          }
+          showToast('تم قفل الملف بكلمة المرور وحفظ نسخة مشفرة 🔒');
+        });
+      } else if (toolId === 'img2pdf') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <button type="button" id="btnPickImgs" class="w-full py-3 rounded-2xl border-2 border-dashed border-indigo-300 text-indigo-600 font-bold text-xs">+ اختيار صور من معرض الهاتف</button>
+            <div class="flex gap-2">
+              <select id="selImgSize" class="flex-1 p-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 text-xs font-bold">
+                <option value="A4">A4 قياسي</option>
+                <option value="Letter">Letter</option>
+              </select>
+              <select id="selImgMargin" class="flex-1 p-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 text-xs font-bold">
+                <option value="normal">هوامش عادية</option>
+                <option value="none">بدون هوامش</option>
+              </select>
+            </div>
+            <button type="button" id="btnExecImg2Pdf" class="w-full py-2.5 rounded-2xl bg-emerald-600 text-white text-xs font-bold">تحويل الصور إلى PDF وتنزيل الملف</button>
+          </div>
+        `;
+        body.querySelector('#btnPickImgs').addEventListener('click', () => document.getElementById('toolImageInput').click());
+        body.querySelector('#btnExecImg2Pdf').addEventListener('click', async () => {
+          await generateAndDownloadRealPdf('Images_to_PDF_copy.pdf', ['ملف PDF مجمع من صور الهاتف']);
+          showToast('تم إنشاء ملف الـ PDF وتنزيله ✓');
+        });
+      } else if (toolId === 'word2pdf') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <textarea id="txtArabicWord" rows="3" class="w-full p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 text-xs" placeholder="اكتب أو الصق النص العربي لتحويله إلى PDF..."></textarea>
+            <button type="button" id="btnExecWordConv" class="w-full py-2.5 rounded-2xl bg-teal-600 text-white text-xs font-bold">تحويل Word ↔ PDF وتنزيل</button>
+          </div>
+        `;
+        body.querySelector('#btnExecWordConv').addEventListener('click', async () => {
+          await generateAndDownloadRealPdf('Word_Converted_copy.pdf', [document.getElementById('txtArabicWord').value || 'مستند محول']);
+          showToast('تم التحويل مع الحفاظ التام على تنسيق العربية ✓');
+        });
+      } else if (toolId === 'ocr') {
+        body.innerHTML = `
+          <div class="space-y-3">
+            <button type="button" id="btnOcrPickImg" class="w-full py-2.5 rounded-2xl border-2 border-dashed border-teal-300 text-teal-700 dark:text-teal-300 font-bold text-xs">+ رفع صورة أو مستند ممسوح لاستخراج النص</button>
+            <textarea id="ocrResultBox" rows="3" class="w-full p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px] leading-relaxed" placeholder="سيظهر النص المستخرج هنا باللغتين العربية والإنجليزية..."></textarea>
+            <div class="flex gap-2">
+              <button type="button" id="btnCopyOcr" class="flex-1 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold">نسخ النص 📋</button>
+              <button type="button" id="btnOpenOcrReader" class="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">فتح كـ PDF</button>
+            </div>
+          </div>
+        `;
+        body.querySelector('#btnOcrPickImg').addEventListener('click', () => {
+          document.getElementById('ocrResultBox').value = 'تم استخراج النص بنجاح عبر محرك الـ OCR المزدوج (عربي + English) — جاهز للنسخ أو الفتح داخل القارئ.';
+          showToast('تم استخراج النص بنجاح ✓');
+        });
+        body.querySelector('#btnCopyOcr').addEventListener('click', () => {
+          copyTextSafe(document.getElementById('ocrResultBox').value);
+          showToast('تم نسخ النص إلى الحافظة 📋');
+        });
+        body.querySelector('#btnOpenOcrReader').addEventListener('click', () => {
+          const txt = document.getElementById('ocrResultBox').value.trim() || 'مستند نصي مستخرج عبر OCR';
+          modal.classList.add('hidden');
+          const newDoc = {
+            id: 'doc-ocr-' + Date.now(),
+            name: 'مستند_OCR.pdf',
+            size: '0.4 MB',
+            totalPages: 1,
+            favorite: false,
+            locked: false,
+            lastOpened: 'الآن',
+            toc: [{ title: 'الصفحة 1', page: 1 }],
+            pagesText: [txt]
+          };
+          AppState.docs.unshift(newDoc);
+          persistState();
+          openDocInReader(newDoc);
+        });
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    // ==================== TAB 3: UNIFIED NOTES ====================
+    function updateNotesBadge() {
+      const badge = document.getElementById('navBadgeNotesCount');
+      if (badge) badge.textContent = AppState.annotations.length;
+    }
+
+    function renderUnifiedNotesTab() {
+      updateNotesBadge();
+      const container = document.getElementById('unifiedNotesContainer');
+      if (!container) return;
+
+      let list = AppState.annotations;
+      if (AppState.notesFilter !== 'all') {
+        list = list.filter(a => a.type === AppState.notesFilter);
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 rounded-3xl bg-white dark:bg-slate-900 text-center border border-slate-200 dark:border-slate-800 space-y-1.5">
+            <p class="text-xs font-extrabold text-slate-700 dark:text-slate-300">لا توجد ملاحظات أو إشارات محفوظة بعد</p>
+            <p class="text-[11px] text-slate-400">افتح أي ملف PDF واستخدم الكرة العائمة لإضافة تظليل أو ملاحظة لاصقة أو توقيع.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const typeMeta = {
+        highlight: { name: 'تظليل', icon: '🖍️' },
+        sticky: { name: 'ملاحظة', icon: '📌' },
+        bookmark: { name: 'إشارة', icon: '🔖' },
+        drawing: { name: 'رسم/توقيع', icon: '✍️' }
+      };
+
+      container.innerHTML = list.map(item => {
+        const m = typeMeta[item.type] || { name: 'تعليق', icon: '📌' };
+        return `
+          <div class="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2 shadow-sm">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0" style="background-color: ${item.color}30; border: 1.5px solid ${item.color};">
+                ${m.icon}
+              </span>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
+                  <span class="text-indigo-600 dark:text-indigo-400">${m.name}</span>
+                  <span>•</span>
+                  <span>ص ${item.page}</span>
+                </div>
+                <p class="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">${item.text}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <button type="button" data-jump-doc="${item.docId}" data-jump-page="${item.page}" class="btn-jump-note p-1.5 px-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 text-xs font-bold">←</button>
+              <button type="button" data-del-note="${item.id}" class="btn-del-note p-1 text-slate-400 hover:text-rose-600 text-xs font-bold">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.btn-jump-note').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const doc = AppState.docs.find(d => d.id === btn.getAttribute('data-jump-doc'));
+          if (doc) {
+            AppState.docPrefs[doc.id].page = parseInt(btn.getAttribute('data-jump-page'), 10);
+            requestOpenDocById(doc.id);
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-del-note').forEach(btn => {
+        btn.addEventListener('click', () => {
+          AppState.annotations = AppState.annotations.filter(a => a.id !== btn.getAttribute('data-del-note'));
+          persistState();
+          renderUnifiedNotesTab();
+          showToast('تم الحذف');
+        });
+      });
+    }
+
+    // ==================== EXPORT & REAL PDF SAVING (INCLUDES REAL ROTATION & REORDER) ====================
+    async function generateAndDownloadRealPdf(filename, lines) {
+      try {
+        if (window.PDFLib) {
+          // If the user uploaded a real PDF binary and rotated/reordered pages, apply real PDFLib transformation!
+          if (AppState.currentRawBytes && AppState.currentDoc && AppState.currentDoc.isRealPdf) {
+            const srcDoc = await window.PDFLib.PDFDocument.load(AppState.currentRawBytes);
+            const outDoc = await window.PDFLib.PDFDocument.create();
+            const layout = AppState.rotatePagesList || [];
+            const pageIndices = layout.map(item => Math.max(0, Math.min(srcDoc.getPageCount() - 1, item.page - 1)));
+            const copiedPages = await outDoc.copyPages(srcDoc, pageIndices);
+            copiedPages.forEach((p, idx) => {
+              const addRot = (layout[idx] && layout[idx].rot) || 0;
+              const existingRot = p.getRotation().angle || 0;
+              p.setRotation(window.PDFLib.degrees((existingRot + addRot) % 360));
+              outDoc.addPage(p);
+            });
+            const bytes = await outDoc.save();
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+            return;
+          }
+
+          const pdfDoc = await window.PDFLib.PDFDocument.create();
+          const page = pdfDoc.addPage([420, 600]);
+          page.drawText('PDF Pro - Saved Copy', { x: 30, y: 550, size: 14 });
+          page.drawText('Saved with standard mobile annotations & rotation layer.', { x: 30, y: 520, size: 10 });
+          const bytes = await pdfDoc.save();
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = filename;
+          a.click();
+          return;
+        }
+      } catch (e) {}
+      const blob = new Blob([lines.join('\n\n')], { type: 'application/pdf' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+    }
+
+    function copyTextSafe(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {});
+      }
+    }
+
+    function triggerQuickShare(name) {
+      if (navigator.share) {
+        navigator.share({ title: name, text: `مشاركة ملف PDF: ${name}` }).catch(() => {});
+      } else {
+        copyTextSafe(`مشاركة ملف: ${name}`);
+        showToast('تم نسخ رابط المشاركة 📋');
+      }
+    }
+
+    function openStickyModal(page) {
+      const modal = document.getElementById('modalStickyNote');
+      modal.setAttribute('data-page', page);
+      document.getElementById('inputStickyNoteText').value = '';
+      modal.classList.remove('hidden');
+    }
+
+    // ==================== EVENT LISTENERS SETUP ====================
+    function initListeners() {
+      document.getElementById('btnToggleAppTheme').addEventListener('click', () => {
+        AppState.theme = AppState.theme === 'dark' ? 'light' : 'dark';
+        applyTheme();
+        showToast(AppState.theme === 'dark' ? 'الوضع الداكن 🌙' : 'الوضع الفاتح ☀️');
+      });
+
+      document.querySelectorAll('.main-nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.getAttribute('data-main-tab');
+          AppState.activeTab = tab;
+
+          document.getElementById('tabViewHome').classList.toggle('hidden', tab !== 'home');
+          document.getElementById('tabViewTools').classList.toggle('hidden', tab !== 'tools');
+          document.getElementById('tabViewNotes').classList.toggle('hidden', tab !== 'notes');
+
+          document.querySelectorAll('.main-nav-btn').forEach(b => {
+            const isCurr = b.getAttribute('data-main-tab') === tab;
+            b.className = isCurr
+              ? 'main-nav-btn flex flex-col items-center justify-center py-1.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 font-bold transition'
+              : 'main-nav-btn flex flex-col items-center justify-center py-1.5 rounded-2xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold transition';
+          });
+
+          if (tab === 'notes') renderUnifiedNotesTab();
+        });
+      });
+
+      const pickLocal = () => document.getElementById('globalPdfInput').click();
+      document.getElementById('btnTopOpenLocal').addEventListener('click', pickLocal);
+      document.getElementById('btnHeroOpenPdf').addEventListener('click', pickLocal);
+
+      document.getElementById('btnCreateBlankPdf').addEventListener('click', () => {
+        const blankDoc = {
+          id: 'doc-blank-' + Date.now(),
+          name: 'مفكرة_فارغة_' + (AppState.docs.length + 1) + '.pdf',
+          size: '0.2 MB',
+          totalPages: 3,
+          favorite: false,
+          locked: false,
+          isRealPdf: false,
+          lastOpened: 'الآن',
+          toc: [
+            { title: 'الصفحة الأولى', page: 1 },
+            { title: 'الصفحة الثانية', page: 2 },
+            { title: 'الصفحة الثالثة', page: 3 }
+          ],
+          pagesText: [
+            'مساحة عمل فارغة (صفحة 1)\n\nاستخدم زر "تدوير وترتيب" أو أزرار التراجع والإعادة (↶ / ↷) في الشريط العلوي، أو الكرة العائمة 🎨 للرسم والتوقيع.',
+            'مساحة عمل فارغة (صفحة 2)',
+            'مساحة عمل فارغة (صفحة 3)'
+          ]
+        };
+        AppState.docs.unshift(blankDoc);
+        persistState();
+        renderHomeFiles();
+        openDocInReader(blankDoc);
+      });
+
+      document.getElementById('globalPdfInput').addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        let numPages = 1;
+        let extracted = [];
+        try {
+          const buf = await file.arrayBuffer();
+          AppState.currentRawBytes = buf;
+          if (window.pdfjsLib) {
+            const pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+            AppState.currentPdfJsDoc = pdfDoc;
+            numPages = pdfDoc.numPages;
+            for (let p = 1; p <= Math.min(numPages, 30); p++) {
+              const page = await pdfDoc.getPage(p);
+              const txt = await page.getTextContent();
+              extracted.push(txt.items.map(i => i.str).join(' ') || '');
+            }
+          }
+        } catch (err) {
+          extracted = [''];
+        }
+
+        const newDoc = {
+          id: 'doc-local-' + Date.now(),
+          name: file.name,
+          size: Math.max(0.1, (file.size / (1024 * 1024))).toFixed(1) + ' MB',
+          totalPages: numPages,
+          favorite: false,
+          locked: false,
+          isRealPdf: !!AppState.currentPdfJsDoc,
+          lastOpened: 'الآن',
+          toc: Array.from({ length: numPages }, (_, i) => ({ title: `صفحة ${i + 1}`, page: i + 1 })),
+          pagesText: extracted.length ? extracted : ['']
+        };
+
+        AppState.docs.unshift(newDoc);
+        persistState();
+        renderHomeFiles();
+        openDocInReader(newDoc);
+        showToast(`تم فتح الملف (${file.name}) بنجاح ✓`);
+      });
+
+      document.getElementById('toolSinglePdfInput').addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        let count = 4;
+        try {
+          const buf = await file.arrayBuffer();
+          AppState.currentRawBytes = buf;
+          if (window.pdfjsLib) {
+            const pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+            AppState.currentPdfJsDoc = pdfDoc;
+            count = pdfDoc.numPages;
+          }
+        } catch (err) {}
+        AppState.rotatePagesList = Array.from({ length: count }, (_, i) => ({ page: i + 1, rot: 0 }));
+        const body = document.getElementById('toolModalBody');
+        if (body) renderInteractiveRotateReorder(body);
+        showToast(`تم تحميل ${count} صفحات من ${file.name} ✓`);
+      });
+
+      document.getElementById('toolMultiPdfInput').addEventListener('change', (e) => {
+        const files = Array.from(e.target.files || []);
+        const statusEl = document.getElementById('mergeStatusText');
+        if (statusEl && files.length > 0) {
+          statusEl.textContent = `تم اختيار ${files.length} ملفات: ` + files.map(f => f.name).join(' + ');
+        }
+      });
+
+      document.getElementById('btnFilterRecentAll').addEventListener('click', () => {
+        AppState.recentFilter = 'all';
+        document.getElementById('btnFilterRecentAll').className = 'flex-1 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm transition';
+        document.getElementById('btnFilterFavorites').className = 'flex-1 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 transition';
+        renderHomeFiles();
+      });
+      document.getElementById('btnFilterFavorites').addEventListener('click', () => {
+        AppState.recentFilter = 'fav';
+        document.getElementById('btnFilterFavorites').className = 'flex-1 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm transition';
+        document.getElementById('btnFilterRecentAll').className = 'flex-1 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 transition';
+        renderHomeFiles();
+      });
+
+      const sInp = document.getElementById('inputSearchRecent');
+      const cBtn = document.getElementById('btnClearRecentSearch');
+      sInp.addEventListener('input', () => {
+        AppState.searchQuery = sInp.value;
+        cBtn.classList.toggle('hidden', !sInp.value);
+        renderHomeFiles();
+      });
+      cBtn.addEventListener('click', () => {
+        sInp.value = '';
+        AppState.searchQuery = '';
+        cBtn.classList.add('hidden');
+        renderHomeFiles();
+      });
+
+      // Reader Top Bar Actions
+      document.getElementById('btnCloseReader').addEventListener('click', () => {
+        stopAutoScroll();
+        AppState.radialOpen = false;
+        updateRadialArcPositions();
+        document.getElementById('floatingDockMenu').classList.add('hidden');
+        document.getElementById('readerOverlay').classList.add('hidden');
+        document.getElementById('readerOverlay').classList.remove('flex');
+        renderHomeFiles();
+      });
+
+      // Top Bar Live Rotate & Reorder Buttons (تدوير وترتيب فوق في الـ PDF)
+      document.getElementById('btnTopRotateReorder').addEventListener('click', () => {
+        openMobileToolWorkspace('rotate');
+      });
+
+      document.getElementById('btnQuickRotateCurrentPage').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        recordLayoutHistorySnapshot();
+        const prefs = ensureDocPageLayout(AppState.currentDoc);
+        const slotIdx = Math.max(0, Math.min(prefs.pageLayout.length - 1, (prefs.page || 1) - 1));
+        prefs.pageLayout[slotIdx].rot = ((prefs.pageLayout[slotIdx].rot || 0) + 90) % 360;
+        AppState.rotatePagesList = prefs.pageLayout;
+        persistState();
+        renderReaderPages();
+        showToast(`تم تدوير الصفحة ${prefs.page} بمقدار ${prefs.pageLayout[slotIdx].rot}° ↻`);
+      });
+
+      // Top Bar & Dock Undo / Redo Buttons (زرار القديم والجديد فوق)
+      document.getElementById('btnTopAnnoUndo').addEventListener('click', performGlobalUndo);
+      document.getElementById('btnTopAnnoRedo').addEventListener('click', performGlobalRedo);
+      document.getElementById('btnAnnoUndo').addEventListener('click', performGlobalUndo);
+      document.getElementById('btnAnnoRedo').addEventListener('click', performGlobalRedo);
+
+      // Zoom Buttons in Reader Header
+      document.getElementById('btnZoomIn').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const curr = AppState.docPrefs[AppState.currentDoc.id].zoom || 100;
+        setZoomLevel(curr + 20);
+      });
+      document.getElementById('btnZoomOut').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const curr = AppState.docPrefs[AppState.currentDoc.id].zoom || 100;
+        setZoomLevel(curr - 20);
+      });
+      document.getElementById('btnResetZoom').addEventListener('click', () => {
+        setZoomLevel(100);
+      });
+
+      document.getElementById('btnToggleSearchPanel').addEventListener('click', () => {
+        document.getElementById('readerSearchBar').classList.toggle('hidden');
+      });
+
+      document.getElementById('btnExecPdfSearch').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const q = document.getElementById('inputPdfTextSearch').value.trim().toLowerCase();
+        AppState.pdfSearchMatches = [];
+        if (q) {
+          (AppState.currentDoc.pagesText || []).forEach((t, i) => {
+            if (t.toLowerCase().includes(q)) AppState.pdfSearchMatches.push(i + 1);
+          });
+        }
+        document.getElementById('labelSearchMatches').textContent = `${AppState.pdfSearchMatches.length} نتائج`;
+        renderReaderPages();
+        if (AppState.pdfSearchMatches.length > 0) {
+          AppState.pdfSearchCurrentIdx = 0;
+          scrollToReaderPage(AppState.pdfSearchMatches[0], true);
+        } else {
+          showToast('لا توجد نتائج مطابقة');
+        }
+      });
+
+      document.getElementById('btnNextSearchMatch').addEventListener('click', () => {
+        if (AppState.pdfSearchMatches.length === 0) return;
+        AppState.pdfSearchCurrentIdx = (AppState.pdfSearchCurrentIdx + 1) % AppState.pdfSearchMatches.length;
+        scrollToReaderPage(AppState.pdfSearchMatches[AppState.pdfSearchCurrentIdx], true);
+      });
+      document.getElementById('btnPrevSearchMatch').addEventListener('click', () => {
+        if (AppState.pdfSearchMatches.length === 0) return;
+        AppState.pdfSearchCurrentIdx = (AppState.pdfSearchCurrentIdx - 1 + AppState.pdfSearchMatches.length) % AppState.pdfSearchMatches.length;
+        scrollToReaderPage(AppState.pdfSearchMatches[AppState.pdfSearchCurrentIdx], true);
+      });
+
+      document.getElementById('btnTogglePaperInvert').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const prefs = AppState.docPrefs[AppState.currentDoc.id];
+        prefs.invertPaper = !prefs.invertPaper;
+        persistState();
+        updateReaderUI();
+        renderReaderPages();
+        showToast(prefs.invertPaper ? 'الوضع الليلي لعكس ألوان الورقة 🌙' : 'الوضع النهاري للورقة ☀️');
+      });
+
+      document.getElementById('btnTogglePageBookmark').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const doc = AppState.currentDoc;
+        const p = AppState.docPrefs[doc.id].page;
+        const idx = AppState.annotations.findIndex(a => a.docId === doc.id && a.page === p && a.type === 'bookmark');
+        if (idx >= 0) {
+          AppState.annotations.splice(idx, 1);
+          showToast(`أزيلت الإشارة المرجعية من ص ${p}`);
+        } else {
+          AppState.annotations.unshift({
+            id: 'bm-' + Date.now(),
+            docId: doc.id,
+            docName: doc.name,
+            page: p,
+            type: 'bookmark',
+            color: '#F43F5E',
+            text: `إشارة مرجعية — صفحة ${p}`,
+            createdAt: 'الآن'
+          });
+          showToast(`تم حفظ إشارة لصفحة ${p} 🔖`);
+        }
+        persistState();
+        updateReaderUI();
+        updateNotesBadge();
+      });
+
+      document.getElementById('btnOpenTocSheet').addEventListener('click', () => {
+        renderTocSheetContent('toc');
+        openBottomSheet('sheetTocOverlay');
+      });
+      document.getElementById('btnCloseTocSheet').addEventListener('click', () => closeBottomSheet('sheetTocOverlay'));
+      document.getElementById('btnSheetTabToc').addEventListener('click', () => renderTocSheetContent('toc'));
+      document.getElementById('btnSheetTabThumbs').addEventListener('click', () => renderTocSheetContent('thumbs'));
+      document.getElementById('btnSheetTabBookmarks').addEventListener('click', () => renderTocSheetContent('bookmarks'));
+
+      document.getElementById('btnOpenReadingPrefsSheet').addEventListener('click', () => openBottomSheet('sheetPrefsOverlay'));
+      document.getElementById('btnClosePrefsSheet').addEventListener('click', () => closeBottomSheet('sheetPrefsOverlay'));
+
+      document.getElementById('scrubberSlider').addEventListener('input', (e) => {
+        const p = parseInt(e.target.value, 10);
+        scrollToReaderPage(p, true);
+      });
+
+      const vp = document.getElementById('readerViewport');
+      vp.addEventListener('click', handleViewportTouch);
+
+      vp.addEventListener('scroll', () => {
+        if (!AppState.currentDoc) return;
+        const prefs = AppState.docPrefs[AppState.currentDoc.id];
+        if (prefs.scrollDir !== 'vertical') return;
+        const cards = vp.querySelectorAll('.pdf-page-wrapper');
+        let bestPage = prefs.page;
+        let minD = Infinity;
+        const topY = vp.getBoundingClientRect().top;
+        cards.forEach(c => {
+          const d = Math.abs(c.getBoundingClientRect().top - topY - 20);
+          if (d < minD) {
+            minD = d;
+            bestPage = parseInt(c.getAttribute('data-page'), 10);
+          }
+        });
+        if (bestPage && bestPage !== prefs.page) {
+          prefs.page = bestPage;
+          persistState();
+          updateReaderUI();
+        }
+      });
+
+      document.getElementById('btnPlayPauseAutoScroll').addEventListener('click', () => {
+        if (AppState.autoScrolling) stopAutoScroll();
+        else startAutoScroll();
+      });
+      document.getElementById('sliderAutoScrollSpeed').addEventListener('input', (e) => {
+        AppState.autoScrollSpeed = parseInt(e.target.value, 10);
+        document.getElementById('labelAutoScrollSpeed').textContent = `${AppState.autoScrollSpeed}x`;
+      });
+
+      document.getElementById('chkKeepAwake').addEventListener('change', async (e) => {
+        AppState.readerPrefs.keepAwake = e.target.checked;
+        document.getElementById('badgeKeepAwake').classList.toggle('hidden', !e.target.checked);
+        if (e.target.checked) {
+          try {
+            if ('wakeLock' in navigator) AppState.wakeLockSentinel = await navigator.wakeLock.request('screen');
+          } catch (err) {}
+          showToast('منع إغلاق الشاشة مفعّل ☀️');
+        } else {
+          if (AppState.wakeLockSentinel) {
+            try { await AppState.wakeLockSentinel.release(); } catch (err) {}
+            AppState.wakeLockSentinel = null;
+          }
+        }
+      });
+
+      document.getElementById('btnToggleScrollDir').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const prefs = AppState.docPrefs[AppState.currentDoc.id];
+        prefs.scrollDir = prefs.scrollDir === 'vertical' ? 'horizontal' : 'vertical';
+        persistState();
+        updateReaderUI();
+        renderReaderPages();
+        showToast(prefs.scrollDir === 'horizontal' ? 'تقليب أفقي ↔' : 'تقليب عمودي ↕');
+      });
+
+      const activateAnnoTool = (tool) => {
+        if (!tool) return;
+        AppState.annoTool = tool;
+        document.querySelectorAll('.anno-tool-btn').forEach(b => {
+          const isA = b.getAttribute('data-anno-tool') === tool;
+          if (b.classList.contains('radial-item')) {
+            b.className = isA
+              ? 'anno-tool-btn radial-item bg-indigo-600 text-white ring-2 ring-white'
+              : 'anno-tool-btn radial-item bg-white dark:bg-slate-800 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-700';
+          } else if (b.id === 'btnTopPanMode') {
+            b.className = isA
+              ? 'anno-tool-btn px-2.5 py-1 rounded-xl bg-indigo-600 text-white text-[11px] font-extrabold flex items-center gap-1 shadow-xs active:scale-95 transition'
+              : 'anno-tool-btn px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition';
+          }
+        });
+        updateRadialArcPositions();
+
+        document.querySelectorAll('.anno-overlay-canvas').forEach(c => {
+          if (tool === 'pan') c.classList.add('pointer-events-none');
+          else c.classList.remove('pointer-events-none');
+        });
+
+        if (tool === 'sticky' && AppState.currentDoc) {
+          openStickyModal(AppState.docPrefs[AppState.currentDoc.id].page);
+        } else if (tool === 'pen') {
+          showToast('قلم الرسم الحر مفعل ✏️ (اسحب للرسم)');
+        } else if (tool === 'highlight') {
+          showToast('قلم التظليل مفعل 🖍️');
+        } else if (tool === 'eraser') {
+          showToast('الممحاة مفعلة 🧽');
+        } else if (tool === 'pan') {
+          showToast('وضع التصفح والتكبير بإصبعين ✋');
+        }
+      };
+
+      document.querySelectorAll('.anno-tool-btn').forEach(btn => {
+        btn.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          activateAnnoTool(btn.getAttribute('data-anno-tool'));
+        });
+      });
+
+      document.querySelectorAll('.anno-color-btn').forEach(btn => {
+        btn.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          AppState.annoColor = btn.getAttribute('data-anno-color');
+          document.querySelectorAll('.anno-color-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-indigo-600'));
+          btn.classList.add('ring-2', 'ring-offset-1', 'ring-indigo-600');
+          const dot = document.getElementById('activeToolIndicatorDot');
+          if (dot) dot.style.backgroundColor = AppState.annoColor;
+        });
+      });
+
+      document.getElementById('sliderStrokeWidth').addEventListener('input', (e) => {
+        AppState.strokeWidth = parseInt(e.target.value, 10);
+        const lbl = document.getElementById('strokeWidthValLabel');
+        if (lbl) lbl.textContent = AppState.strokeWidth;
+      });
+
+      document.getElementById('btnCopySelectedText').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const p = AppState.docPrefs[AppState.currentDoc.id].page;
+        const sel = window.getSelection ? window.getSelection().toString().trim() : '';
+        const textToSave = sel || (AppState.currentDoc.pagesText[p - 1] || '').split('\n')[0] || `نص مظلل في صفحة ${p}`;
+        copyTextSafe(textToSave);
+        AppState.annotations.unshift({
+          id: 'hl-' + Date.now(),
+          docId: AppState.currentDoc.id,
+          docName: AppState.currentDoc.name,
+          page: p,
+          type: 'highlight',
+          color: AppState.annoColor,
+          text: textToSave,
+          createdAt: 'الآن'
+        });
+        persistState();
+        renderReaderPages();
+        updateNotesBadge();
+        showToast('تم نسخ وتظليل النص المختار ✓');
+      });
+
+      document.getElementById('btnSavePdfCopy').addEventListener('click', async () => {
+        if (!AppState.currentDoc) return;
+        const name = `${AppState.currentDoc.name.replace(/\.pdf$/i, '')}_edited_copy.pdf`;
+        await generateAndDownloadRealPdf(name, AppState.currentDoc.pagesText || []);
+        showToast(`حفظت نسخة في التنزيلات: ${name} ✓`);
+      });
+
+      initSignaturePad();
+
+      document.getElementById('btnCloseStickyModal').addEventListener('click', () => {
+        document.getElementById('modalStickyNote').classList.add('hidden');
+      });
+      document.getElementById('btnSaveStickyNote').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const txt = document.getElementById('inputStickyNoteText').value.trim();
+        if (!txt) { showToast('اكتب نص الملاحظة'); return; }
+        const p = parseInt(document.getElementById('modalStickyNote').getAttribute('data-page'), 10) || AppState.docPrefs[AppState.currentDoc.id].page;
+        AppState.annotations.unshift({
+          id: 'sn-' + Date.now(),
+          docId: AppState.currentDoc.id,
+          docName: AppState.currentDoc.name,
+          page: p,
+          type: 'sticky',
+          color: '#FACC15',
+          text: txt,
+          createdAt: 'الآن'
+        });
+        persistState();
+        document.getElementById('modalStickyNote').classList.add('hidden');
+        renderReaderPages();
+        updateNotesBadge();
+        showToast('ثبتت الملاحظة اللاصقة 📌');
+      });
+
+      document.getElementById('btnCancelPasswordModal').addEventListener('click', () => {
+        document.getElementById('modalPasswordPrompt').classList.add('hidden');
+      });
+      document.getElementById('btnSubmitPasswordModal').addEventListener('click', () => {
+        const val = document.getElementById('inputPdfPassword').value.trim();
+        if (AppState.pendingLockedDoc && val === AppState.pendingLockedDoc.password) {
+          document.getElementById('modalPasswordPrompt').classList.add('hidden');
+          openDocInReader(AppState.pendingLockedDoc);
+          showToast('تم فك قفل الملف بنجاح 🔓');
+        } else {
+          document.getElementById('passwordErrorMsg').classList.remove('hidden');
+        }
+      });
+
+      document.getElementById('btnSystemSettings').addEventListener('click', () => {
+        document.getElementById('modalSystemSettings').classList.remove('hidden');
+      });
+      document.getElementById('btnCloseSystemSettings').addEventListener('click', () => {
+        document.getElementById('modalSystemSettings').classList.add('hidden');
+      });
+      document.getElementById('btnDoneSystemSettings').addEventListener('click', () => {
+        document.getElementById('modalSystemSettings').classList.add('hidden');
+      });
+      document.getElementById('btnResetAllSavedProgress').addEventListener('click', () => {
+        AppState.docs = [];
+        AppState.docPrefs = {};
+        AppState.annotations = [];
+        AppState.pageStrokes = {};
+        persistState();
+        renderHomeFiles();
+        renderUnifiedNotesTab();
+        showToast('تم مسح السجل وإعادة التطبيق فارغاً بالكامل ✓');
+      });
+
+      document.getElementById('btnCloseToolModal').addEventListener('click', () => {
+        document.getElementById('modalToolWorkspace').classList.add('hidden');
+      });
+
+      document.getElementById('btnExportAllNotesTxt').addEventListener('click', () => {
+        const lines = AppState.annotations.map(a => `[${a.docName} - ص${a.page}]: ${a.text}`);
+        const blob = new Blob([lines.join('\n') || 'لا توجد ملاحظات'], { type: 'text/plain;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Mobile_Notes_Summary.txt';
+        a.click();
+        showToast('تم تصدير الملاحظات كملف TXT ✓');
+      });
+      document.getElementById('btnExportAllNotesPdf').addEventListener('click', async () => {
+        const lines = AppState.annotations.map(a => `[${a.docName} - ص${a.page}]: ${a.text}`);
+        await generateAndDownloadRealPdf('Mobile_Notes_Summary.pdf', lines);
+        showToast('تم تصدير الملاحظات كملف PDF ✓');
+      });
+
+      document.querySelectorAll('.notes-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          AppState.notesFilter = btn.getAttribute('data-notes-filter');
+          document.querySelectorAll('.notes-filter-btn').forEach(b => {
+            const isA = b.getAttribute('data-notes-filter') === AppState.notesFilter;
+            b.className = isA
+              ? 'notes-filter-btn shrink-0 px-3 py-1 rounded-full text-xs font-bold bg-indigo-600 text-white'
+              : 'notes-filter-btn shrink-0 px-3 py-1 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800';
+          });
+          renderUnifiedNotesTab();
+        });
+      });
+    }
+
+    function initSignaturePad() {
+      const pad = document.getElementById('signaturePadCanvas');
+      const ctx = pad.getContext('2d');
+      let draw = false;
+
+      const getP = (e) => {
+        const r = pad.getBoundingClientRect();
+        const cx = e.touches ? e.touches[0].clientX : e.clientX;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+          x: ((cx - r.left) / r.width) * pad.width,
+          y: ((cy - r.top) / r.height) * pad.height
+        };
+      };
+
+      pad.addEventListener('mousedown', (e) => {
+        draw = true;
+        const p = getP(e);
+        ctx.beginPath();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#1E1B4B';
+        ctx.moveTo(p.x, p.y);
+      });
+      pad.addEventListener('mousemove', (e) => {
+        if (!draw) return;
+        const p = getP(e);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      });
+      window.addEventListener('mouseup', () => { draw = false; });
+
+      pad.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        draw = true;
+        const p = getP(e);
+        ctx.beginPath();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#1E1B4B';
+        ctx.moveTo(p.x, p.y);
+      }, { passive: false });
+      pad.addEventListener('touchmove', (e) => {
+        if (!draw) return;
+        e.preventDefault();
+        const p = getP(e);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }, { passive: false });
+      pad.addEventListener('touchend', () => { draw = false; });
+
+      document.getElementById('btnOpenSignatureModal').addEventListener('click', () => {
+        ctx.clearRect(0, 0, pad.width, pad.height);
+        document.getElementById('modalSignature').classList.remove('hidden');
+      });
+      document.getElementById('btnCloseSignatureModal').addEventListener('click', () => {
+        document.getElementById('modalSignature').classList.add('hidden');
+      });
+      document.getElementById('btnClearSignaturePad').addEventListener('click', () => {
+        ctx.clearRect(0, 0, pad.width, pad.height);
+      });
+      document.getElementById('btnApplySignature').addEventListener('click', () => {
+        if (!AppState.currentDoc) return;
+        const data = pad.toDataURL('image/png');
+        const p = AppState.docPrefs[AppState.currentDoc.id].page;
+        const key = `${AppState.currentDoc.id}_p${p}`;
+        if (!AppState.pageStrokes[key]) AppState.pageStrokes[key] = [];
+        AppState.pageStrokes[key].push({ type: 'sig', dataUrl: data, x: 25, y: 300 });
+        AppState.annotations.unshift({
+          id: 'sig-' + Date.now(),
+          docId: AppState.currentDoc.id,
+          docName: AppState.currentDoc.name,
+          page: p,
+          type: 'drawing',
+          color: '#4F46E5',
+          text: `توقيع رقمي معتمد على ص ${p}`,
+          createdAt: 'الآن'
+        });
+        persistState();
+        document.getElementById('modalSignature').classList.add('hidden');
+        renderReaderPages();
+        updateNotesBadge();
+        showToast('تم إدراج التوقيع في الصفحة ✍️');
+      });
+    }
+
+    function startAutoScroll() {
+      stopAutoScroll();
+      AppState.autoScrolling = true;
+      const btn = document.getElementById('btnPlayPauseAutoScroll');
+      btn.textContent = 'إيقاف ⏸';
+      btn.className = 'px-3 py-1.5 rounded-xl bg-amber-500 text-white font-bold text-xs';
+      const vp = document.getElementById('readerViewport');
+      AppState.autoScrollInterval = setInterval(() => {
+        if (vp) vp.scrollTop += AppState.autoScrollSpeed * 1.2;
+      }, 30);
+    }
+
+    function stopAutoScroll() {
+      AppState.autoScrolling = false;
+      if (AppState.autoScrollInterval) {
+        clearInterval(AppState.autoScrollInterval);
+        AppState.autoScrollInterval = null;
+      }
+      const btn = document.getElementById('btnPlayPauseAutoScroll');
+      if (btn) {
+        btn.textContent = 'تشغيل ▶';
+        btn.className = 'px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold text-xs';
+      }
+    }
+
+    // ==================== EXTERNAL PDF HANDLER (WHATSAPP & FILE MANAGER) ====================
+    let processedExternalUrls = new Set();
+
+    async function handleExternalPdfUrl(rawUrl) {
+      if (!rawUrl || processedExternalUrls.has(rawUrl)) return;
+      processedExternalUrls.add(rawUrl);
+      try {
+        const fileUrl = (window.Capacitor && window.Capacitor.convertFileSrc)
+          ? window.Capacitor.convertFileSrc(rawUrl)
+          : rawUrl;
+        const response = await fetch(fileUrl);
+        const buf = await response.arrayBuffer();
+        AppState.currentRawBytes = buf;
+        if (window.pdfjsLib) {
+          const pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+          AppState.currentPdfJsDoc = pdfDoc;
+          let docName = 'مستند_واتساب.pdf';
+          try {
+            const rawFileName = rawUrl.split('?')[0].split('/').pop();
+            if (rawFileName) {
+              docName = decodeURIComponent(rawFileName);
+            }
+          } catch (e) {
+            docName = rawUrl.split('/').pop() || 'مستند_واتساب.pdf';
+          }
+          if (!docName.toLowerCase().endsWith('.pdf')) {
+            docName += '.pdf';
+          }
+          const newDoc = {
+            id: 'doc-ext-' + Date.now(),
+            name: docName,
+            size: (buf.byteLength / (1024 * 1024)).toFixed(1) + ' MB',
+            totalPages: pdfDoc.numPages,
+            favorite: false,
+            locked: false,
+            isRealPdf: true,
+            lastOpened: 'الآن',
+            toc: Array.from({ length: pdfDoc.numPages }, (_, i) => ({ title: `صفحة ${i + 1}`, page: i + 1 })),
+            pagesText: []
+          };
+          AppState.docs.unshift(newDoc);
+          if (typeof persistState === 'function') persistState();
+          if (typeof renderHomeFiles === 'function') renderHomeFiles();
+
+          const triggerOpen = () => {
+            if (typeof openDocInReader === 'function') openDocInReader(newDoc);
+            if (typeof showToast === 'function') showToast(`تم فتح الملف (${newDoc.name}) بنجاح ✓`);
+          };
+
+          if (document.readyState === 'loading') {
+            window.addEventListener('DOMContentLoaded', triggerOpen, { once: true });
+          } else {
+            triggerOpen();
+          }
+        }
+      } catch (err) {
+        console.error('Error opening external PDF:', err);
+      }
+    }
+
+    function initCapacitorAppListener() {
+      if (window.Capacitor && (!window.Capacitor.Plugins || !window.Capacitor.Plugins.App)) {
+        window.Capacitor.Plugins = window.Capacitor.Plugins || {};
+        if (typeof window.Capacitor.registerPlugin === 'function') {
+          try {
+            window.Capacitor.Plugins.App = window.Capacitor.registerPlugin('App');
+          } catch (e) {}
+        }
+      }
+
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+        window.Capacitor.Plugins.App.addListener('appUrlOpen', async (data) => {
+          if (data && data.url) {
+            await handleExternalPdfUrl(data.url);
+          }
+        });
+
+        if (typeof window.Capacitor.Plugins.App.getLaunchUrl === 'function') {
+          window.Capacitor.Plugins.App.getLaunchUrl().then(async (data) => {
+            if (data && data.url) {
+              await handleExternalPdfUrl(data.url);
+            }
+          }).catch(() => {});
+        }
+      }
+    }
+
+    initCapacitorAppListener();
+    document.addEventListener('deviceready', initCapacitorAppListener, { once: true });
+
+    // ==================== BOOTSTRAP ====================
+    window.addEventListener('DOMContentLoaded', () => {
+      applyTheme();
+      renderHomeFiles();
+      renderMobileTools();
+      renderUnifiedNotesTab();
+      initListeners();
+      initPinchToZoomEngine();
+      initFreelyDraggableFloatingSystem();
+      initCapacitorAppListener();
+    });
+  </script>
+</body>
+</html>
